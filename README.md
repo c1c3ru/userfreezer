@@ -13,6 +13,10 @@ do administrador.
   sistema (systemd no Linux, Windows Service no Windows) para rodar no
   boot, ficar fora do controle do usuário comum e reforçar o ciclo
   "muda na sessão, volta ao congelado no próximo boot".
+- **Bandeja do sistema** (`ui/`): ícone azul/laranja (congelado/
+  descongelado), painel de status e alternância de estado atrás de
+  senha de admin. Única parte com dependência externa (`pystray` +
+  `Pillow`), já que não existe API de bandeja na stdlib.
 
 ## Core: uso via CLI
 
@@ -90,6 +94,22 @@ o hardening de ACL do overlay (`harden_acl.ps1`) e as notas de
 empacotamento com PyInstaller. **Escrito e revisado, mas não executado
 em Windows real** — validar numa VM antes de produção (checklist no
 próprio README do diretório).
+
+## Bandeja do sistema (`ui/`)
+
+Ícone na área de notificação — cadeado azul (congelado) ou laranja
+(descongelado) — com painel de status e alternância de estado atrás
+de senha de admin (hash PBKDF2-HMAC-SHA256 + salt, nunca texto plano):
+
+```
+pip install pystray Pillow                                    # única dependência externa do projeto
+python3 ui/set_admin_password.py --config /etc/deepfreezer/config.json
+python3 ui/tray_app.py --config /etc/deepfreezer/config.json
+```
+
+Detalhes, dependências (Tkinter pode exigir `python3-tk` no Linux) e o
+que ficou pendente de validação numa sessão gráfica real em
+`ui/README.md`.
 
 ## Receitas de arquitetura: congelamento de SO completo (nível de kernel)
 
