@@ -1,0 +1,9 @@
+{
+  "targets": [
+    {
+      "target": "/opt/lab-app",
+      "overlay": null,
+      "verify": false
+    }
+  ]
+}
