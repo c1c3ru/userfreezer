@@ -11,7 +11,7 @@ Type=oneshot
 RemainAfterExit=yes
 User=root
 Group=root
-ExecStart=/usr/bin/python3 /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json
+ExecStart=/usr/bin/python3 -B /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json
 StandardOutput=journal
 StandardError=journal
 

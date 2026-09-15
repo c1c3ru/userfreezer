@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.dfreezer/
+/dist/
+*.deb
+*.exe
+build/
+*.spec

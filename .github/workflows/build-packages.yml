@@ -1,0 +1,85 @@
+name: build-packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .deb
+        run: packaging/linux/build_deb.sh dist
+
+      - name: Install and smoke-test the .deb
+        run: |
+          set -e
+          sudo dpkg -i dist/*.deb
+          dpkg -L deepfreezer
+          sudo python3 -c "
+          import json
+          json.dump({'targets': [{'target': '/tmp/df-ci-target'}]}, open('/etc/deepfreezer/config.json', 'w'))
+          "
+          sudo mkdir -p /tmp/df-ci-target
+          sudo python3 -B /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json -v
+          sudo dpkg -P deepfreezer
+          test ! -d /opt/deepfreezer
+          test ! -d /etc/deepfreezer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepfreezer-deb
+          path: dist/*.deb
+
+  build-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: pip install pywin32 pyinstaller
+
+      - name: Build deepfreezer_service.exe
+        run: >
+          pyinstaller --onefile --noconsole --name deepfreezer_service
+          --hidden-import win32timezone
+          packaging/windows/deepfreezer_service.py
+
+      - name: Sanity-check the built exe exists and is a real PE binary
+        shell: pwsh
+        run: |
+          $exe = "dist/deepfreezer_service.exe"
+          if (-not (Test-Path $exe)) { throw "exe nao foi gerado: $exe" }
+          $item = Get-Item $exe
+          Write-Host "gerado: $($item.FullName) ($($item.Length) bytes)"
+          if ($item.Length -lt 1000000) { throw "exe suspeito de tamanho pequeno demais: $($item.Length) bytes" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepfreezer-exe
+          path: dist/deepfreezer_service.exe
+
+  release:
+    needs: [build-deb, build-exe]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/deepfreezer-deb/*.deb
+            artifacts/deepfreezer-exe/*.exe
