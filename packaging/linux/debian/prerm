@@ -1,0 +1,12 @@
+#!/bin/sh
+# prerm do pacote deepfreezer -- para e desabilita o servico antes de
+# remover os arquivos.
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now deepfreezer.service || true
+    fi
+fi
+
+exit 0

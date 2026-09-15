@@ -18,6 +18,33 @@ do administrador.
   senha de admin. Única parte com dependência externa (`pystray` +
   `Pillow`), já que não existe API de bandeja na stdlib.
 
+## Pacotes prontos (.deb / .exe)
+
+Não precisa clonar o repo pra instalar o serviço — o workflow
+`.github/workflows/build-packages.yml` gera os dois pacotes e, numa
+tag `vX.Y.Z`, publica em [Releases](https://github.com/c1c3ru/userfreezer/releases):
+
+- **Linux — `deepfreezer_<versão>_all.deb`**: instala o core +
+  daemon em `/opt/deepfreezer`, o `config.json` em `/etc/deepfreezer`
+  (`chmod 700`) e a unit do systemd, já com as permissões da Tarefa 2
+  aplicadas pelo próprio `postinst`.
+  ```
+  sudo dpkg -i deepfreezer_0.1.0_all.deb
+  sudo systemctl start deepfreezer      # revise /etc/deepfreezer/config.json antes
+  sudo apt remove deepfreezer           # remove (preserva config)
+  sudo apt purge deepfreezer            # remove tudo
+  ```
+  Buildado e testado (install/run/remove/purge reais) neste repositório
+  — ver `packaging/linux/build_deb.sh` para gerar localmente.
+
+- **Windows — `deepfreezer_service.exe`**: binário único gerado por
+  PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
+  (ver `packaging/windows/README.md` para os dois jeitos de registrar
+  o serviço com ele). Buildado pelo runner `windows-latest` do GitHub
+  Actions — **não executado/validado como serviço real** (sem Windows
+  disponível neste ambiente); checklist de validação no README do
+  diretório.
+
 ## Core: uso via CLI
 
 ```
@@ -73,6 +100,9 @@ instalação):
 ```
 
 ### Linux (systemd)
+
+Instalação a partir do repo (equivalente ao `.deb` da seção acima,
+útil pra rodar direto de uma checkout sem gerar o pacote):
 
 ```
 sudo packaging/linux/install.sh      # instala + habilita o serviço

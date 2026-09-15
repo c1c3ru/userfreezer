@@ -29,11 +29,18 @@ descarta o overlay da sessão anterior (thaw sem commit), recongela a
 árvore e restringe a ACL do overlay (`icacls`) a Administradores e
 SYSTEM — ver `harden_acl.ps1` para reaplicar isso manualmente.
 
-## Empacotando com PyInstaller (opcional)
+## Empacotando com PyInstaller
 
 Para não depender de um Python instalado na máquina alvo, gere um
-executável único a partir da raiz do repositório (em uma máquina
-Windows — PyInstaller não faz cross-compile a partir de Linux/macOS):
+executável único. **Já automatizado** em
+`.github/workflows/build-packages.yml` (job `build-exe`, roda num
+runner `windows-latest` de verdade — é como este `.exe` foi de fato
+buildado, já que este repositório foi desenvolvido num sandbox Linux):
+dispare o workflow manualmente (aba Actions → Run workflow) ou publique
+uma tag `vX.Y.Z` pra também anexar o `.exe` em Releases.
+
+Pra gerar manualmente numa máquina Windows (PyInstaller não faz
+cross-compile a partir de Linux/macOS, então isso não roda daqui):
 
 ```
 pyinstaller --onefile --noconsole --name deepfreezer_service ^
@@ -47,15 +54,23 @@ com pywin32. O `.exe` gerado (`dist\deepfreezer_service.exe`) substitui
 `install` (modo pywin32) quanto `--foreground` (modo NSSM) funcionam
 direto no executável.
 
-## O que não foi verificado aqui
+## O que foi e o que não foi verificado
 
-Todo este diretório foi escrito e revisado, mas **não executado**: o
-sandbox usado para desenvolver é Linux e não tem Windows, pywin32 ou
-NSSM disponíveis para testar de verdade (a lógica de enforcement
-compartilhada com o Linux — carregar config, descartar overlay da
-sessão anterior, recongelar — foi validada nesse mesmo arquivo rodando
-em Linux, sem `icacls`, e falhou de forma controlada como esperado).
-Antes de ir para produção, valide em uma VM Windows:
+O **build** do `.exe` é real: o job `build-exe` do workflow roda num
+runner Windows de verdade, instala pywin32 + PyInstaller e confirma
+que o binário gerado existe e tem um tamanho plausível (não é só "o
+comando não deu erro"). Isso valida que o código compila e empacota
+no Windows — não que o serviço funciona como serviço.
+
+O que **não** foi executado: registrar o serviço (pywin32 ou NSSM),
+rodar o enforcement de verdade, aplicar `icacls`, ou qualquer
+interação com o Gerenciador de Serviços/Task Manager — nada disso
+acontece no job de build, e o sandbox usado pra desenvolver é Linux
+sem Windows/pywin32/NSSM disponíveis pra testar isso localmente (a
+lógica de enforcement compartilhada com o Linux — carregar config,
+descartar overlay da sessão anterior, recongelar — foi validada
+rodando em Linux, sem `icacls`, e falhou de forma controlada como
+esperado). Antes de ir para produção, valide em uma VM Windows:
 
 - Instalar por um dos dois caminhos acima e confirmar `Start-Service`
   (ou `nssm start`) sem erro.

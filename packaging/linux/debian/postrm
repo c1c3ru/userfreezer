@@ -1,0 +1,21 @@
+#!/bin/sh
+# postrm do pacote deepfreezer -- no purge, remove o que sobrar de
+# /etc/deepfreezer (o dpkg ja remove o conffile config.json sozinho;
+# isto cobre o diretorio em si).
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # a unit roda com "python3 -B" (sem bytecode), mas uma execucao
+    # manual sem -B pode deixar __pycache__ para tras e impedir o
+    # dpkg de remover o diretorio (nao rastreado no pacote).
+    rm -rf /opt/deepfreezer/__pycache__
+fi
+
+if [ "$1" = "purge" ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+    fi
+    rm -rf /etc/deepfreezer
+fi
+
+exit 0

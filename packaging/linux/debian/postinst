@@ -1,0 +1,23 @@
+#!/bin/sh
+# postinst do pacote deepfreezer -- roda depois dos arquivos serem
+# extraidos. So' ajusta permissoes e registra a unit; nao inicia o
+# servico automaticamente (o admin revisa /etc/deepfreezer/config.json
+# primeiro).
+set -e
+
+if [ "$1" = "configure" ]; then
+    chown root:root /etc/deepfreezer/config.json
+    chmod 0600 /etc/deepfreezer/config.json
+    chown root:root /etc/deepfreezer
+    chmod 0700 /etc/deepfreezer
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+        systemctl enable deepfreezer.service || true
+    fi
+
+    echo "deepfreezer instalado. Revise /etc/deepfreezer/config.json e rode:"
+    echo "  systemctl start deepfreezer"
+fi
+
+exit 0
