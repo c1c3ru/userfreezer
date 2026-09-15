@@ -1,0 +1,19 @@
+[Unit]
+Description=DeepFreezer - protecao de estado da arvore de diretorios (application-level)
+After=local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+# RemainAfterExit: nao ha processo residente (nada para o overlay
+# fazer alem do enforcement de boot), mas o servico continua "active"
+# para o systemd e so pode ser parado com systemctl (root/sudo).
+RemainAfterExit=yes
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
