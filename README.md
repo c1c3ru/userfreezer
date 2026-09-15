@@ -20,9 +20,9 @@ do administrador.
 
 ## Pacotes prontos (.deb / .exe)
 
-Não precisa clonar o repo pra instalar o serviço — o workflow
-`.github/workflows/build-packages.yml` gera os dois pacotes e, numa
-tag `vX.Y.Z`, publica em [Releases](https://github.com/c1c3ru/userfreezer/releases):
+O workflow `.github/workflows/build-packages.yml` builda os dois
+pacotes a cada execução. Ele já rodou com sucesso pra `main`
+([run #1](https://github.com/c1c3ru/userfreezer/actions/runs/34999027606)):
 
 - **Linux — `deepfreezer_<versão>_all.deb`**: instala o core +
   daemon em `/opt/deepfreezer`, o `config.json` em `/etc/deepfreezer`
@@ -34,16 +34,26 @@ tag `vX.Y.Z`, publica em [Releases](https://github.com/c1c3ru/userfreezer/releas
   sudo apt remove deepfreezer           # remove (preserva config)
   sudo apt purge deepfreezer            # remove tudo
   ```
-  Buildado e testado (install/run/remove/purge reais) neste repositório
-  — ver `packaging/linux/build_deb.sh` para gerar localmente.
+  Testado de ponta a ponta (install → rodar o daemon → remove →
+  purge, com `dpkg` de verdade) tanto neste repositório quanto no
+  próprio runner de CI — ver `packaging/linux/build_deb.sh` pra gerar
+  localmente.
 
 - **Windows — `deepfreezer_service.exe`**: binário único gerado por
   PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
-  (ver `packaging/windows/README.md` para os dois jeitos de registrar
-  o serviço com ele). Buildado pelo runner `windows-latest` do GitHub
-  Actions — **não executado/validado como serviço real** (sem Windows
-  disponível neste ambiente); checklist de validação no README do
-  diretório.
+  num runner `windows-latest` real (ver `packaging/windows/README.md`
+  pros dois jeitos de registrar o serviço com ele). O **build** está
+  verificado (compila, empacota e gera um binário do tamanho
+  esperado); **registrar e rodar o serviço no Windows de verdade
+  continua sem validar** — checklist no README do diretório.
+
+Como baixar agora: abra o
+[run mais recente](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml)
+na aba Actions e pegue os artifacts `deepfreezer-deb` /
+`deepfreezer-exe` (expiram em ~90 dias). Empurrando uma tag `vX.Y.Z`
+o mesmo workflow também publica os dois em
+[Releases](https://github.com/c1c3ru/userfreezer/releases) (link
+permanente) — isso ainda não foi feito neste repositório.
 
 ## Core: uso via CLI
 
