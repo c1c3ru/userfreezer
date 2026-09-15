@@ -51,6 +51,8 @@ jobs:
         run: >
           pyinstaller --onefile --noconsole --name deepfreezer_service
           --hidden-import win32timezone
+          --hidden-import deepfreezer
+          --paths .
           packaging/windows/deepfreezer_service.py
 
       - name: Sanity-check the built exe exists and is a real PE binary
