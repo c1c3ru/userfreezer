@@ -53,13 +53,63 @@ atual — só 7/10/11). Qualquer `EditionID` não reconhecido pelo
 detector cai no fallback seguro `vhdx_diff`, nunca assume um write
 filter nativo sem confirmar contra uma lista explícita.
 
-**Status:** só o detector existe até agora (`classify()` tem testes
-puros em `test_os_detect.py`, rodam em qualquer SO). A leitura real do
-registro (`get_os_info()`), e a orquestração de cada estratégia
-(`uwf`/`ewf_fbwf`/`vhdx_diff` de fato aplicando a proteção) ainda não
-foram implementadas nem validadas numa máquina Windows de verdade —
-antes de confiar em produção, rode `python os_detect.py` numa máquina
-de cada versão/edição alvo e confira o resultado.
+A orquestração de cada estratégia mora em `packaging/windows/os_level/`:
+
+- `select_strategy.ps1` — roda `os_detect.py` e aponta pro script certo.
+- `uwf_setup.ps1` — instala o feature, protege volume, exclui caminhos,
+  ativa/desativa o filtro (Windows 10/11 Enterprise/Education/IoT).
+- `ewf_fbwf_setup.ps1` — equivalente pro Windows 7 Embedded/POSReady
+  (detecta se a imagem tem `ewfmgr.exe` ou `fbwfmgr.exe` e usa o que
+  existir).
+- `vhdx_diff_setup.ps1` / `vhdx_diff_reset.ps1` — provisiona o boot por
+  disco diferencial VHDX (Home/Pro, qualquer versão) e recria o
+  diferencial pra "resetar" a máquina.
+
+**Status — o que foi verificado:**
+
+- A lógica pura de `os_detect.py` (`classify()`) tem 16 testes que
+  rodam em qualquer SO, todos passando.
+- Os quatro scripts em `os_level/` têm sintaxe validada pelo parser
+  real do PowerShell (`[System.Management.Automation.Language.Parser]::ParseFile`,
+  via PowerShell 7 instalado no sandbox Linux usado pra desenvolver
+  este repo) e a lógica de leitura do JSON + roteamento por estratégia
+  em `select_strategy.ps1` foi testada de ponta a ponta (chamando
+  `os_detect.py` de verdade e simulando cada valor de `strategy`).
+- Os comandos `uwfmgr`/`ewfmgr`/`fbwfmgr`/`diskpart`/`dism`/`bcdboot`
+  usados foram conferidos contra a documentação oficial da Microsoft
+  (links abaixo), não contra uma execução real.
+
+**Status — o que NÃO foi verificado, porque não há Windows real
+disponível pra testar:**
+
+- A leitura de verdade do registro em `get_os_info()` — se os valores
+  de `EditionID` batem com o que uma máquina real devolve, principalmente
+  nas edições Embedded/POSReady do Windows 7, que variam mais por OEM.
+- Se `uwf_setup.ps1`/`ewf_fbwf_setup.ps1` de fato protegem/revertem
+  gravações numa máquina real, ponta a ponta.
+- `vhdx_diff_setup.ps1`/`vhdx_diff_reset.ps1` inteiros — é a parte mais
+  arriscada do projeto (reconfigura o boot; um erro pode deixar a
+  máquina sem bootar) e a menos testável sem hardware/VM real. **Nunca
+  rode isso numa máquina de produção sem validar antes numa VM
+  descartável.**
+- `vhdx_diff_reset.ps1` também deixa uma lacuna deliberada: ele recria
+  o disco diferencial, mas alguém ainda precisa *rodá-lo* de um
+  ambiente de manutenção (WinPE/recuperação) antes de cada boot normal
+  — automatizar isso (customizando a imagem do WinRE pra chamar o
+  script sozinha) não foi implementado, por ser a etapa de maior risco
+  de todo o processo e a menos documentada.
+
+Antes de confiar em qualquer uma dessas estratégias em produção, rode
+`python os_detect.py` numa máquina de cada versão/edição alvo pra
+conferir o resultado, e teste o script correspondente numa VM
+descartável primeiro.
+
+Fontes usadas na implementação:
+[UWF feature](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/),
+[uwfmgr.exe reference](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/uwfmgrexe),
+[EWF Manager](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ff794092(v=winembedded.60)),
+[Deploy Windows with a VHDX (native boot)](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/deploy-windows-on-a-vhd--native-boot),
+[Create vdisk (diskpart)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/gg252579(v=ws.11)).
 
 ## 1. pywin32 (serviço nativo)
 
