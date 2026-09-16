@@ -41,13 +41,25 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
 
 - **Windows — `deepfreezer_service.exe`**: binário único gerado por
   PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
-  num runner `windows-latest` real (ver `packaging/windows/README.md`
-  pros dois jeitos de registrar o serviço com ele). O **build** está
-  verificado (compila, empacota e gera um binário do tamanho
+  num runner `windows-latest` real, com Python 3.11 — **não roda no
+  Windows 7** (Python 3.9+ não é mais compatível com ele). O **build**
+  está verificado (compila, empacota e gera um binário do tamanho
   esperado); **registrar e rodar o serviço no Windows de verdade
-  continua sem validar** — checklist no README do diretório. Isso é a
-  proteção *application-level* do core — ver "Limite honesto" mais
-  abaixo pro que ela não cobre.
+  continua sem validar** — checklist em `packaging/windows/README.md`.
+  Isso é a proteção *application-level* do core — ver "Limite honesto"
+  mais abaixo pro que ela não cobre.
+
+- **Windows 7 — `deepfreezer_service_win7.exe`**: o mesmo binário,
+  compilado à parte com Python 3.8 (a última versão compatível com
+  Windows 7). Não foi validado numa máquina Windows 7 real — se ainda
+  assim não iniciar, o próximo suspeito é o bootloader do PyInstaller.
+
+- **Windows — `deepfreezer-windows-service-scripts.zip`**:
+  `install_service_exe.ps1` (instala o serviço a partir do `.exe`
+  baixado, sem precisar de Python na máquina) +
+  `install_service_pywin32.ps1` / `install_service_nssm.ps1` (a partir
+  do código-fonte) + `harden_acl.ps1`. Ver
+  `packaging/windows/README.md` pra qual usar.
 
 - **Windows — `deepfreezer-windows-os-level.zip`**: `os_detect.py`
   (detecta versão/edição do Windows) + os scripts em
@@ -62,6 +74,7 @@ Como baixar agora: abra a página de
 versão mais recente, ou, sem esperar uma tag, o
 [run mais recente](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml)
 na aba Actions pros artifacts `deepfreezer-deb` / `deepfreezer-exe` /
+`deepfreezer-exe-win7` / `deepfreezer-windows-service-scripts` /
 `deepfreezer-windows-os-level` (esses expiram em ~90 dias; os de
 Releases são permanentes).
 

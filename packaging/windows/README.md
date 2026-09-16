@@ -6,110 +6,44 @@ e iniciado como serviço do Windows — é o serviço, rodando no boot, que
 descarta as mudanças da sessão anterior e recongela. Rodá-lo com duplo
 clique direto agora mostra uma caixa de mensagem explicando isso (em
 vez de simplesmente não fazer nada, como acontecia antes); ele ainda
-não faz o enforcement nesse caso. Siga um dos dois caminhos abaixo.
+não faz o enforcement nesse caso. Siga um dos caminhos abaixo.
 
-Duas formas de registrar o servico — escolha uma:
+## Windows 7: baixe o `.exe` certo
 
-## Proteção a nível de SO (qualquer gravação, de qualquer programa)
+**`deepfreezer_service.exe` (o binário padrão) não roda no Windows 7.**
+Ele é compilado com Python 3.11, e o Python deixou de suportar Windows 7
+a partir da versão 3.9 (3.8 foi a última compatível) — o processo
+simplesmente não inicia nessa versão do Windows, independente de
+qualquer script. Na página de
+[Releases](https://github.com/c1c3ru/userfreezer/releases), baixe
+**`deepfreezer_service_win7.exe`** em vez do `.exe` normal (compilado
+à parte com Python 3.8) e renomeie para `deepfreezer_service.exe`
+antes de instalar. **Isso não foi validado numa máquina Windows 7
+real** — se mesmo assim não iniciar, o próximo suspeito é o bootloader
+do PyInstaller (versões recentes também podem ter deixado de suportar
+Windows 7), não mais o Python.
 
-O que está descrito no resto deste arquivo é a proteção *application-level*
-do core (`deepfreezer.py`): só reverte gravações feitas pela própria
-API/CLI, não uma gravação qualquer do Explorer ou de outro programa
-(ver "Limite honesto" no README da raiz). Para proteger a máquina
-inteira contra qualquer gravação, a estratégia depende da edição do
-Windows instalada, porque nem toda edição tem um write filter nativo:
+## Instalando o serviço a partir do `.exe` baixado (sem Python)
 
-| Versão | Edições com write filter nativo | Estratégia | Edições sem (Home/Pro) |
-|---|---|---|---|
-| Windows 11 | Enterprise, Education, IoT Enterprise | `uwf` (Unified Write Filter, via `uwfmgr.exe`) | `vhdx_diff` |
-| Windows 10 | Enterprise, Education, IoT Enterprise | `uwf` | `vhdx_diff` |
-| Windows 7 | Embedded Standard, POSReady | `ewf_fbwf` (Enhanced/File-Based Write Filter) | `vhdx_diff` |
-
-`vhdx_diff` (disco diferencial VHDX no boot) é o único caminho pra
-Home/Pro em qualquer versão — funciona em qualquer edição, mas exige
-reprovisionar a máquina nesse esquema de boot, bem mais pesado que
-instalar um serviço.
-
-`packaging/windows/os_detect.py` identifica automaticamente a versão +
-edição da máquina e devolve qual estratégia usar:
+Baixe `deepfreezer_service.exe` (ou `deepfreezer_service_win7.exe`,
+renomeado — ver acima) e `install_service_exe.ps1` da página de
+Releases (estão juntos no zip `deepfreezer-windows-service-scripts.zip`),
+coloque os dois **na mesma pasta**, abra o PowerShell **como
+Administrador**, entre nessa pasta (`cd`) e rode:
 
 ```
-python os_detect.py
+.\install_service_exe.ps1
 ```
 
-```json
-{
-  "windows_version": "11",
-  "edition": "Enterprise",
-  "strategy": "uwf",
-  "reason": "edicao com Unified Write Filter nativo",
-  "product_name": "Windows 11 Enterprise",
-  "build": 22631
-}
-```
+Repare no `.\` antes do nome do script — sem ele o PowerShell não
+executa um script da pasta atual e devolve um erro de "termo não
+reconhecido", mesmo com o arquivo bem ali. `install_service_exe.ps1
+-Uninstall` remove o serviço.
 
-Windows 8/8.1 caem em `"strategy": "unsupported"` (fora do escopo
-atual — só 7/10/11). Qualquer `EditionID` não reconhecido pelo
-detector cai no fallback seguro `vhdx_diff`, nunca assume um write
-filter nativo sem confirmar contra uma lista explícita.
+## Instalando a partir do código-fonte (Python + pywin32 instalados)
 
-A orquestração de cada estratégia mora em `packaging/windows/os_level/`:
-
-- `select_strategy.ps1` — roda `os_detect.py` e aponta pro script certo.
-- `uwf_setup.ps1` — instala o feature, protege volume, exclui caminhos,
-  ativa/desativa o filtro (Windows 10/11 Enterprise/Education/IoT).
-- `ewf_fbwf_setup.ps1` — equivalente pro Windows 7 Embedded/POSReady
-  (detecta se a imagem tem `ewfmgr.exe` ou `fbwfmgr.exe` e usa o que
-  existir).
-- `vhdx_diff_setup.ps1` / `vhdx_diff_reset.ps1` — provisiona o boot por
-  disco diferencial VHDX (Home/Pro, qualquer versão) e recria o
-  diferencial pra "resetar" a máquina.
-
-**Status — o que foi verificado:**
-
-- A lógica pura de `os_detect.py` (`classify()`) tem 16 testes que
-  rodam em qualquer SO, todos passando.
-- Os quatro scripts em `os_level/` têm sintaxe validada pelo parser
-  real do PowerShell (`[System.Management.Automation.Language.Parser]::ParseFile`,
-  via PowerShell 7 instalado no sandbox Linux usado pra desenvolver
-  este repo) e a lógica de leitura do JSON + roteamento por estratégia
-  em `select_strategy.ps1` foi testada de ponta a ponta (chamando
-  `os_detect.py` de verdade e simulando cada valor de `strategy`).
-- Os comandos `uwfmgr`/`ewfmgr`/`fbwfmgr`/`diskpart`/`dism`/`bcdboot`
-  usados foram conferidos contra a documentação oficial da Microsoft
-  (links abaixo), não contra uma execução real.
-
-**Status — o que NÃO foi verificado, porque não há Windows real
-disponível pra testar:**
-
-- A leitura de verdade do registro em `get_os_info()` — se os valores
-  de `EditionID` batem com o que uma máquina real devolve, principalmente
-  nas edições Embedded/POSReady do Windows 7, que variam mais por OEM.
-- Se `uwf_setup.ps1`/`ewf_fbwf_setup.ps1` de fato protegem/revertem
-  gravações numa máquina real, ponta a ponta.
-- `vhdx_diff_setup.ps1`/`vhdx_diff_reset.ps1` inteiros — é a parte mais
-  arriscada do projeto (reconfigura o boot; um erro pode deixar a
-  máquina sem bootar) e a menos testável sem hardware/VM real. **Nunca
-  rode isso numa máquina de produção sem validar antes numa VM
-  descartável.**
-- `vhdx_diff_reset.ps1` também deixa uma lacuna deliberada: ele recria
-  o disco diferencial, mas alguém ainda precisa *rodá-lo* de um
-  ambiente de manutenção (WinPE/recuperação) antes de cada boot normal
-  — automatizar isso (customizando a imagem do WinRE pra chamar o
-  script sozinha) não foi implementado, por ser a etapa de maior risco
-  de todo o processo e a menos documentada.
-
-Antes de confiar em qualquer uma dessas estratégias em produção, rode
-`python os_detect.py` numa máquina de cada versão/edição alvo pra
-conferir o resultado, e teste o script correspondente numa VM
-descartável primeiro.
-
-Fontes usadas na implementação:
-[UWF feature](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/),
-[uwfmgr.exe reference](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/uwfmgrexe),
-[EWF Manager](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ff794092(v=winembedded.60)),
-[Deploy Windows with a VHDX (native boot)](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/deploy-windows-on-a-vhd--native-boot),
-[Create vdisk (diskpart)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/gg252579(v=ws.11)).
+Duas formas de registrar o servico a partir do repositório clonado —
+escolha uma:
 
 ## 1. pywin32 (serviço nativo)
 
@@ -182,13 +116,120 @@ com pywin32. O `.exe` gerado (`dist\deepfreezer_service.exe`) substitui
 `install` (modo pywin32) quanto `--foreground` (modo NSSM) funcionam
 direto no executável.
 
+## Proteção a nível de SO (qualquer gravação, de qualquer programa)
+
+Tudo descrito acima é a proteção *application-level* do core
+(`deepfreezer.py`): só reverte gravações feitas pela própria API/CLI,
+não uma gravação qualquer do Explorer ou de outro programa (ver
+"Limite honesto" no README da raiz). Para proteger a máquina inteira
+contra qualquer gravação, a estratégia depende da edição do Windows
+instalada, porque nem toda edição tem um write filter nativo:
+
+| Versão | Edições com write filter nativo | Estratégia | Edições sem (Home/Pro) |
+|---|---|---|---|
+| Windows 11 | Enterprise, Education, IoT Enterprise | `uwf` (Unified Write Filter, via `uwfmgr.exe`) | `vhdx_diff` |
+| Windows 10 | Enterprise, Education, IoT Enterprise | `uwf` | `vhdx_diff` |
+| Windows 7 | Embedded Standard, POSReady | `ewf_fbwf` (Enhanced/File-Based Write Filter) | `vhdx_diff` |
+
+`vhdx_diff` (disco diferencial VHDX no boot) é o único caminho pra
+Home/Pro em qualquer versão — funciona em qualquer edição, mas exige
+reprovisionar a máquina nesse esquema de boot, bem mais pesado que
+instalar um serviço.
+
+`packaging/windows/os_detect.py` identifica automaticamente a versão +
+edição da máquina e devolve qual estratégia usar:
+
+```
+python os_detect.py
+```
+
+```json
+{
+  "windows_version": "11",
+  "edition": "Enterprise",
+  "strategy": "uwf",
+  "reason": "edicao com Unified Write Filter nativo",
+  "product_name": "Windows 11 Enterprise",
+  "build": 22631
+}
+```
+
+Windows 8/8.1 caem em `"strategy": "unsupported"` (fora do escopo
+atual — só 7/10/11). Qualquer `EditionID` não reconhecido pelo
+detector cai no fallback seguro `vhdx_diff`, nunca assume um write
+filter nativo sem confirmar contra uma lista explícita.
+
+A orquestração de cada estratégia mora em `packaging/windows/os_level/`
+(baixe `deepfreezer-windows-os-level.zip` da página de Releases, ou
+clone o repositório):
+
+- `select_strategy.ps1` — roda `os_detect.py` e aponta pro script certo.
+- `uwf_setup.ps1` — instala o feature, protege volume, exclui caminhos,
+  ativa/desativa o filtro (Windows 10/11 Enterprise/Education/IoT).
+- `ewf_fbwf_setup.ps1` — equivalente pro Windows 7 Embedded/POSReady
+  (detecta se a imagem tem `ewfmgr.exe` ou `fbwfmgr.exe` e usa o que
+  existir).
+- `vhdx_diff_setup.ps1` / `vhdx_diff_reset.ps1` — provisiona o boot por
+  disco diferencial VHDX (Home/Pro, qualquer versão) e recria o
+  diferencial pra "resetar" a máquina.
+
+**Status — o que foi verificado:**
+
+- A lógica pura de `os_detect.py` (`classify()`) tem 16 testes que
+  rodam em qualquer SO, todos passando.
+- Os quatro scripts em `os_level/` têm sintaxe validada pelo parser
+  real do PowerShell (`[System.Management.Automation.Language.Parser]::ParseFile`,
+  via PowerShell 7 instalado no sandbox Linux usado pra desenvolver
+  este repo) e a lógica de leitura do JSON + roteamento por estratégia
+  em `select_strategy.ps1` foi testada de ponta a ponta (chamando
+  `os_detect.py` de verdade e simulando cada valor de `strategy`).
+- Os comandos `uwfmgr`/`ewfmgr`/`fbwfmgr`/`diskpart`/`dism`/`bcdboot`
+  usados foram conferidos contra a documentação oficial da Microsoft
+  (links abaixo), não contra uma execução real.
+
+**Status — o que NÃO foi verificado, porque não há Windows real
+disponível pra testar:**
+
+- A leitura de verdade do registro em `get_os_info()` — se os valores
+  de `EditionID` batem com o que uma máquina real devolve, principalmente
+  nas edições Embedded/POSReady do Windows 7, que variam mais por OEM.
+- Se `uwf_setup.ps1`/`ewf_fbwf_setup.ps1` de fato protegem/revertem
+  gravações numa máquina real, ponta a ponta.
+- `vhdx_diff_setup.ps1`/`vhdx_diff_reset.ps1` inteiros — é a parte mais
+  arriscada do projeto (reconfigura o boot; um erro pode deixar a
+  máquina sem bootar) e a menos testável sem hardware/VM real. **Nunca
+  rode isso numa máquina de produção sem validar antes numa VM
+  descartável.**
+- `vhdx_diff_reset.ps1` também deixa uma lacuna deliberada: ele recria
+  o disco diferencial, mas alguém ainda precisa *rodá-lo* de um
+  ambiente de manutenção (WinPE/recuperação) antes de cada boot normal
+  — automatizar isso (customizando a imagem do WinRE pra chamar o
+  script sozinha) não foi implementado, por ser a etapa de maior risco
+  de todo o processo e a menos documentada.
+
+Antes de confiar em qualquer uma dessas estratégias em produção, rode
+`python os_detect.py` numa máquina de cada versão/edição alvo pra
+conferir o resultado, e teste o script correspondente numa VM
+descartável primeiro.
+
+Fontes usadas na implementação:
+[UWF feature](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/),
+[uwfmgr.exe reference](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/uwfmgrexe),
+[EWF Manager](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ff794092(v=winembedded.60)),
+[Deploy Windows with a VHDX (native boot)](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/deploy-windows-on-a-vhd--native-boot),
+[Create vdisk (diskpart)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/gg252579(v=ws.11)).
+
 ## O que foi e o que não foi verificado
 
-O **build** do `.exe` é real: o job `build-exe` do workflow roda num
-runner Windows de verdade, instala pywin32 + PyInstaller e confirma
-que o binário gerado existe e tem um tamanho plausível (não é só "o
-comando não deu erro"). Isso valida que o código compila e empacota
-no Windows — não que o serviço funciona como serviço.
+O **build** do `.exe` (e do `deepfreezer_service_win7.exe`, job
+`build-exe-win7`) é real: os jobs do workflow rodam num runner Windows
+de verdade, instalam pywin32 + PyInstaller e confirmam que o binário
+gerado existe e tem um tamanho plausível (não é só "o comando não deu
+erro"). Isso valida que o código compila e empacota no Windows — não
+que o serviço funciona como serviço, nem que o binário do
+`build-exe-win7` de fato **inicia** num Windows 7 real (só sabemos que
+Python 3.9+ não inicia nele; não confirmamos que o 3.8 + o bootloader
+do PyInstaller usado bastam).
 
 O que **não** foi executado: registrar o serviço (pywin32 ou NSSM),
 rodar o enforcement de verdade, aplicar `icacls`, ou qualquer
@@ -200,8 +241,9 @@ descartar overlay da sessão anterior, recongelar — foi validada
 rodando em Linux, sem `icacls`, e falhou de forma controlada como
 esperado). Antes de ir para produção, valide em uma VM Windows:
 
-- Instalar por um dos dois caminhos acima e confirmar `Start-Service`
-  (ou `nssm start`) sem erro.
+- Instalar por um dos caminhos acima (`install_service_exe.ps1`,
+  `install_service_pywin32.ps1` ou `install_service_nssm.ps1`) e
+  confirmar `Start-Service` (ou `nssm start`) sem erro.
 - Reiniciar a máquina e confirmar no log
   (`C:\ProgramData\DeepFreezer\deepfreezer.log`) que o enforcement
   rodou no boot.

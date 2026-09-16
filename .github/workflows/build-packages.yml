@@ -69,6 +69,71 @@ jobs:
           name: deepfreezer-exe
           path: dist/deepfreezer_service.exe
 
+  # Python 3.9+ nao roda mais no Windows 7 (3.8 foi a ultima versao
+  # compativel) -- o job build-exe acima usa 3.11, entao o binario que
+  # ele gera nao inicia em Windows 7. Este job compila uma segunda vez
+  # com Python 3.8 especificamente pra isso. NAO TESTADO numa maquina
+  # Windows 7 real (nem o Python 3.8 nem o bootloader do PyInstaller
+  # foram confirmados rodando de fato nesse SO neste repositorio) --
+  # se mesmo assim nao iniciar, o proximo suspeito e' o bootloader do
+  # PyInstaller instalado (versoes muito novas podem ter deixado de
+  # suportar Windows 7 independente do Python usado).
+  build-exe-win7:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: Install build dependencies
+        run: pip install pywin32 pyinstaller
+
+      - name: Build deepfreezer_service_win7.exe (Python 3.8, compativel com Windows 7)
+        run: >
+          pyinstaller --onefile --noconsole --name deepfreezer_service_win7
+          --hidden-import win32timezone
+          --hidden-import deepfreezer
+          --paths .
+          packaging/windows/deepfreezer_service.py
+
+      - name: Sanity-check the built exe exists and is a real PE binary
+        shell: pwsh
+        run: |
+          $exe = "dist/deepfreezer_service_win7.exe"
+          if (-not (Test-Path $exe)) { throw "exe nao foi gerado: $exe" }
+          $item = Get-Item $exe
+          Write-Host "gerado: $($item.FullName) ($($item.Length) bytes)"
+          if ($item.Length -lt 1000000) { throw "exe suspeito de tamanho pequeno demais: $($item.Length) bytes" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepfreezer-exe-win7
+          path: dist/deepfreezer_service_win7.exe
+
+  # Scripts de instalacao do servico (app-level), pra quem baixa so' o
+  # .exe da pagina de Releases sem clonar o repositorio.
+  package-service-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip service install scripts
+        run: |
+          mkdir -p dist
+          zip -j dist/deepfreezer-windows-service-scripts.zip \
+            packaging/windows/install_service_exe.ps1 \
+            packaging/windows/install_service_pywin32.ps1 \
+            packaging/windows/install_service_nssm.ps1 \
+            packaging/windows/harden_acl.ps1 \
+            packaging/windows/README.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepfreezer-windows-service-scripts
+          path: dist/deepfreezer-windows-service-scripts.zip
+
   package-os-level:
     runs-on: ubuntu-latest
     steps:
@@ -89,7 +154,7 @@ jobs:
           path: dist/deepfreezer-windows-os-level.zip
 
   release:
-    needs: [build-deb, build-exe, package-os-level]
+    needs: [build-deb, build-exe, build-exe-win7, package-service-scripts, package-os-level]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -104,4 +169,6 @@ jobs:
           files: |
             artifacts/deepfreezer-deb/*.deb
             artifacts/deepfreezer-exe/*.exe
+            artifacts/deepfreezer-exe-win7/*.exe
+            artifacts/deepfreezer-windows-service-scripts/*.zip
             artifacts/deepfreezer-windows-os-level/*.zip
