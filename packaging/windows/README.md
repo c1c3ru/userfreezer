@@ -10,6 +10,57 @@ não faz o enforcement nesse caso. Siga um dos dois caminhos abaixo.
 
 Duas formas de registrar o servico — escolha uma:
 
+## Proteção a nível de SO (qualquer gravação, de qualquer programa)
+
+O que está descrito no resto deste arquivo é a proteção *application-level*
+do core (`deepfreezer.py`): só reverte gravações feitas pela própria
+API/CLI, não uma gravação qualquer do Explorer ou de outro programa
+(ver "Limite honesto" no README da raiz). Para proteger a máquina
+inteira contra qualquer gravação, a estratégia depende da edição do
+Windows instalada, porque nem toda edição tem um write filter nativo:
+
+| Versão | Edições com write filter nativo | Estratégia | Edições sem (Home/Pro) |
+|---|---|---|---|
+| Windows 11 | Enterprise, Education, IoT Enterprise | `uwf` (Unified Write Filter, via `uwfmgr.exe`) | `vhdx_diff` |
+| Windows 10 | Enterprise, Education, IoT Enterprise | `uwf` | `vhdx_diff` |
+| Windows 7 | Embedded Standard, POSReady | `ewf_fbwf` (Enhanced/File-Based Write Filter) | `vhdx_diff` |
+
+`vhdx_diff` (disco diferencial VHDX no boot) é o único caminho pra
+Home/Pro em qualquer versão — funciona em qualquer edição, mas exige
+reprovisionar a máquina nesse esquema de boot, bem mais pesado que
+instalar um serviço.
+
+`packaging/windows/os_detect.py` identifica automaticamente a versão +
+edição da máquina e devolve qual estratégia usar:
+
+```
+python os_detect.py
+```
+
+```json
+{
+  "windows_version": "11",
+  "edition": "Enterprise",
+  "strategy": "uwf",
+  "reason": "edicao com Unified Write Filter nativo",
+  "product_name": "Windows 11 Enterprise",
+  "build": 22631
+}
+```
+
+Windows 8/8.1 caem em `"strategy": "unsupported"` (fora do escopo
+atual — só 7/10/11). Qualquer `EditionID` não reconhecido pelo
+detector cai no fallback seguro `vhdx_diff`, nunca assume um write
+filter nativo sem confirmar contra uma lista explícita.
+
+**Status:** só o detector existe até agora (`classify()` tem testes
+puros em `test_os_detect.py`, rodam em qualquer SO). A leitura real do
+registro (`get_os_info()`), e a orquestração de cada estratégia
+(`uwf`/`ewf_fbwf`/`vhdx_diff` de fato aplicando a proteção) ainda não
+foram implementadas nem validadas numa máquina Windows de verdade —
+antes de confiar em produção, rode `python os_detect.py` numa máquina
+de cada versão/edição alvo e confira o resultado.
+
 ## 1. pywin32 (serviço nativo)
 
 Requer `pip install pywin32` na máquina alvo.
