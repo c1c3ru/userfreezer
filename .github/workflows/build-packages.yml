@@ -69,8 +69,27 @@ jobs:
           name: deepfreezer-exe
           path: dist/deepfreezer_service.exe
 
+  package-os-level:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip Windows OS-level tooling (os_detect.py + os_level scripts)
+        run: |
+          mkdir -p dist
+          zip -r dist/deepfreezer-windows-os-level.zip \
+            packaging/windows/os_detect.py \
+            packaging/windows/test_os_detect.py \
+            packaging/windows/os_level \
+            packaging/windows/README.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deepfreezer-windows-os-level
+          path: dist/deepfreezer-windows-os-level.zip
+
   release:
-    needs: [build-deb, build-exe]
+    needs: [build-deb, build-exe, package-os-level]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -85,3 +104,4 @@ jobs:
           files: |
             artifacts/deepfreezer-deb/*.deb
             artifacts/deepfreezer-exe/*.exe
+            artifacts/deepfreezer-windows-os-level/*.zip

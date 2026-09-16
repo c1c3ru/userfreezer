@@ -18,11 +18,11 @@ do administrador.
   senha de admin. Única parte com dependência externa (`pystray` +
   `Pillow`), já que não existe API de bandeja na stdlib.
 
-## Pacotes prontos (.deb / .exe)
+## Pacotes prontos (.deb / .exe / ferramental Windows)
 
-O workflow `.github/workflows/build-packages.yml` builda os dois
-pacotes a cada execução. Ele já rodou com sucesso pra `main`
-([run #1](https://github.com/c1c3ru/userfreezer/actions/runs/34999027606)):
+O workflow `.github/workflows/build-packages.yml` builda os pacotes a
+cada execução e, numa tag `vX.Y.Z`, publica todos em
+[Releases](https://github.com/c1c3ru/userfreezer/releases):
 
 - **Linux — `deepfreezer_<versão>_all.deb`**: instala o core +
   daemon em `/opt/deepfreezer`, o `config.json` em `/etc/deepfreezer`
@@ -45,15 +45,25 @@ pacotes a cada execução. Ele já rodou com sucesso pra `main`
   pros dois jeitos de registrar o serviço com ele). O **build** está
   verificado (compila, empacota e gera um binário do tamanho
   esperado); **registrar e rodar o serviço no Windows de verdade
-  continua sem validar** — checklist no README do diretório.
+  continua sem validar** — checklist no README do diretório. Isso é a
+  proteção *application-level* do core — ver "Limite honesto" mais
+  abaixo pro que ela não cobre.
 
-Como baixar agora: abra o
+- **Windows — `deepfreezer-windows-os-level.zip`**: `os_detect.py`
+  (detecta versão/edição do Windows) + os scripts em
+  `packaging/windows/os_level/` que orquestram a proteção a nível de
+  SO (UWF, EWF/FBWF, disco diferencial VHDX — qualquer gravação,
+  não só as feitas pela API do core). Nenhum desses scripts foi
+  validado numa máquina Windows real — ver o status detalhado em
+  `packaging/windows/README.md` antes de usar em produção.
+
+Como baixar agora: abra a página de
+[Releases](https://github.com/c1c3ru/userfreezer/releases) e pegue a
+versão mais recente, ou, sem esperar uma tag, o
 [run mais recente](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml)
-na aba Actions e pegue os artifacts `deepfreezer-deb` /
-`deepfreezer-exe` (expiram em ~90 dias). Empurrando uma tag `vX.Y.Z`
-o mesmo workflow também publica os dois em
-[Releases](https://github.com/c1c3ru/userfreezer/releases) (link
-permanente) — isso ainda não foi feito neste repositório.
+na aba Actions pros artifacts `deepfreezer-deb` / `deepfreezer-exe` /
+`deepfreezer-windows-os-level` (esses expiram em ~90 dias; os de
+Releases são permanentes).
 
 ## Core: uso via CLI
 
