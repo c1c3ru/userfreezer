@@ -1,5 +1,13 @@
 # DeepFreezer no Windows
 
+**Duplo clique no `.exe` não faz nada útil por si só.** O
+`deepfreezer_service.exe` só protege alguma coisa depois de instalado
+e iniciado como serviço do Windows — é o serviço, rodando no boot, que
+descarta as mudanças da sessão anterior e recongela. Rodá-lo com duplo
+clique direto agora mostra uma caixa de mensagem explicando isso (em
+vez de simplesmente não fazer nada, como acontecia antes); ele ainda
+não faz o enforcement nesse caso. Siga um dos dois caminhos abaixo.
+
 Duas formas de registrar o servico — escolha uma:
 
 ## 1. pywin32 (serviço nativo)
@@ -29,6 +37,19 @@ descarta o overlay da sessão anterior (thaw sem commit), recongela a
 árvore e restringe a ACL do overlay (`icacls`) a Administradores e
 SYSTEM — ver `harden_acl.ps1` para reaplicar isso manualmente.
 
+**Importante — o que o serviço não faz:** o freezer é *application-level*
+(ver "Limite honesto" no README da raiz). "Congelar" aqui é só tirar um
+manifesto (hash/tamanho/mtime) da árvore — o serviço nunca move os
+arquivos reais nem intercepta gravações do SO. Um arquivo criado direto
+pelo Explorer (ou por qualquer outro programa que não passe pela API/CLI
+do `deepfreezer.py`) grava direto na árvore real e **não** é descartado
+no próximo boot: ele simplesmente vira parte do novo estado "congelado"
+no próximo `freeze()`. Só é revertido o que foi escrito através de
+`df.write()`/`df.rm()`/`df.mkdirs()` (a API do core). Proteger contra
+qualquer gravação, de qualquer processo, exigiria um driver de nível de
+kernel (minifilter no Windows, overlayfs no boot no Linux) — fora do
+escopo deste core.
+
 ## Empacotando com PyInstaller
 
 Para não depender de um Python instalado na máquina alvo, gere um
@@ -45,10 +66,16 @@ cross-compile a partir de Linux/macOS, então isso não roda daqui):
 ```
 pyinstaller --onefile --noconsole --name deepfreezer_service ^
     --hidden-import win32timezone ^
+    --hidden-import deepfreezer ^
+    --paths . ^
     packaging\windows\deepfreezer_service.py
 ```
 
-O `--hidden-import win32timezone` evita um erro comum do PyInstaller
+Rode a partir da raiz do repo (`--paths .`) -- senao o PyInstaller nao
+acha `deepfreezer.py` (fica fora de `packaging\windows\`, importado via
+`sys.path.insert` em tempo de execucao) e o `.exe` quebra com
+`ModuleNotFoundError: No module named 'deepfreezer'` ao rodar. O
+`--hidden-import win32timezone` evita um erro comum do PyInstaller
 com pywin32. O `.exe` gerado (`dist\deepfreezer_service.exe`) substitui
 `python.exe "...\deepfreezer_service.py"` nos comandos acima — tanto
 `install` (modo pywin32) quanto `--foreground` (modo NSSM) funcionam
