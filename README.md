@@ -21,8 +21,7 @@ do administrador.
 ## Pacotes prontos (.deb / .exe)
 
 O workflow `.github/workflows/build-packages.yml` builda os dois
-pacotes a cada execução. Ele já rodou com sucesso pra `main`
-([run #1](https://github.com/c1c3ru/userfreezer/actions/runs/34999027606)):
+pacotes a cada execução:
 
 - **Linux — `deepfreezer_<versão>_all.deb`**: instala o core +
   daemon em `/opt/deepfreezer`, o `config.json` em `/etc/deepfreezer`
@@ -39,19 +38,20 @@ pacotes a cada execução. Ele já rodou com sucesso pra `main`
   próprio runner de CI — ver `packaging/linux/build_deb.sh` pra gerar
   localmente.
 
-- **Windows — `deepfreezer_service.exe`**: binário único gerado por
-  PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
-  num runner `windows-latest` real (ver `packaging/windows/README.md`
-  pros dois jeitos de registrar o serviço com ele). O **build** está
-  verificado (compila, empacota e gera um binário do tamanho
-  esperado); **registrar e rodar o serviço no Windows de verdade
-  continua sem validar** — checklist no README do diretório.
+- **Windows — `deepfreezer-windows.zip`**: `deepfreezer_service.exe`
+  (PyInstaller) + `install.bat`/`uninstall.bat` (clique duas vezes,
+  pedem elevação sozinhos) + os `.ps1` manuais + config de exemplo.
+  Buildado num runner `windows-latest` real, que também **instala o
+  serviço, inicia, confirma que o enforcement rodou (overlay criado a
+  partir de um alvo real) e desinstala** antes de publicar o zip —
+  ver `packaging/windows/README.md` pro que isso cobre e o que ainda
+  falta validar numa máquina Windows de verdade (fora do CI).
 
-Como baixar agora: abra o
-[run mais recente](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml)
-na aba Actions e pegue os artifacts `deepfreezer-deb` /
-`deepfreezer-exe` (expiram em ~90 dias). Empurrando uma tag `vX.Y.Z`
-o mesmo workflow também publica os dois em
+Como baixar: abra a
+[aba Actions do build-packages](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml),
+entre no run mais recente e pegue os artifacts `deepfreezer-deb` /
+`deepfreezer-windows` (expiram em ~90 dias). Empurrando uma tag
+`vX.Y.Z` o mesmo workflow também publica os dois em
 [Releases](https://github.com/c1c3ru/userfreezer/releases) (link
 permanente) — isso ainda não foi feito neste repositório.
 
@@ -126,14 +126,16 @@ O overlay (`<alvo>.dfreezer`) fica com permissão `700`/dono `root`
 depois de cada `freeze` do daemon. Detalhes em
 `packaging/linux/deepfreezer.service` e `packaging/linux/deepfreezerd.py`.
 
-### Windows (Serviço via pywin32 ou NSSM)
+### Windows (`install.bat`, ou pywin32/NSSM manual)
 
-Ver `packaging/windows/README.md` — inclui os dois caminhos de
-instalação (`install_service_pywin32.ps1` / `install_service_nssm.ps1`),
-o hardening de ACL do overlay (`harden_acl.ps1`) e as notas de
-empacotamento com PyInstaller. **Escrito e revisado, mas não executado
-em Windows real** — validar numa VM antes de produção (checklist no
-próprio README do diretório).
+Jeito simples: extraia o zip `deepfreezer-windows` e dê duplo clique
+em `install.bat` (pede elevação sozinho, sem precisar de PowerShell
+manual). Ver `packaging/windows/README.md` pros caminhos manuais
+(`install_service_pywin32.ps1` / `install_service_nssm.ps1`), o
+hardening de ACL do overlay (`harden_acl.ps1`) e o que o CI já valida
+de verdade (instala, inicia, confirma o enforcement, desinstala) vs. o
+que só dá pra confirmar numa máquina Windows real (reboot, UAC do
+`.bat`, usuário sem privilégio).
 
 ## Bandeja do sistema (`ui/`)
 

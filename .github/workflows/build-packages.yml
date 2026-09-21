@@ -62,10 +62,64 @@ jobs:
           Write-Host "gerado: $($item.FullName) ($($item.Length) bytes)"
           if ($item.Length -lt 1000000) { throw "exe suspeito de tamanho pequeno demais: $($item.Length) bytes" }
 
+      - name: Assemble one-click Windows bundle
+        shell: pwsh
+        run: |
+          $bundle = "dist/deepfreezer-windows"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item dist/deepfreezer_service.exe $bundle
+          Copy-Item packaging/windows/install.bat $bundle
+          Copy-Item packaging/windows/uninstall.bat $bundle
+          Copy-Item packaging/windows/install_service_pywin32.ps1 $bundle
+          Copy-Item packaging/windows/install_service_nssm.ps1 $bundle
+          Copy-Item packaging/windows/harden_acl.ps1 $bundle
+          Copy-Item packaging/windows/README.md $bundle
+          Copy-Item packaging/config.example.json $bundle
+          Compress-Archive -Path "$bundle/*" -DestinationPath dist/deepfreezer-windows.zip
+
+      - name: Install, start and uninstall the real Windows service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          & "dist/deepfreezer-windows/install_service_pywin32.ps1"
+
+          New-Item -ItemType Directory -Force -Path "C:\df-ci-target" | Out-Null
+          "original" | Out-File -Encoding ascii "C:\df-ci-target\f.txt"
+          $cfg = @{ targets = @(@{ target = "C:\df-ci-target" }) } | ConvertTo-Json
+          Set-Content -Path "C:\ProgramData\DeepFreezer\config.json" -Value $cfg
+
+          $svc = Get-Service -Name DeepFreezer
+          Write-Host "registrado: status=$($svc.Status) startType=$($svc.StartType)"
+          if ($svc.StartType -ne "Automatic") { throw "StartType inesperado: $($svc.StartType)" }
+
+          Start-Service DeepFreezer
+          Start-Sleep -Seconds 5
+          $svc = Get-Service -Name DeepFreezer
+          Write-Host "apos Start-Service: status=$($svc.Status)"
+          if ($svc.Status -ne "Running") { throw "servico nao ficou Running" }
+
+          if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
+              Write-Host "--- deepfreezer.log ---"
+              Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
+          }
+          if (-not (Test-Path "C:\df-ci-target.dfreezer")) {
+              throw "overlay C:\df-ci-target.dfreezer nao foi criado -- enforcement nao rodou de verdade"
+          }
+          Write-Host "--- ACL do overlay (icacls) ---"
+          icacls "C:\df-ci-target.dfreezer"
+
+          Stop-Service DeepFreezer
+          & "dist/deepfreezer-windows/install_service_pywin32.ps1" -Uninstall
+          Start-Sleep -Seconds 1
+          $gone = Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue
+          if ($gone) { throw "servico ainda existe apos uninstall" }
+          Write-Host "uninstall OK -- servico DeepFreezer nao existe mais"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: deepfreezer-exe
-          path: dist/deepfreezer_service.exe
+          name: deepfreezer-windows
+          path: dist/deepfreezer-windows.zip
 
   release:
     needs: [build-deb, build-exe]
@@ -82,4 +136,4 @@ jobs:
         with:
           files: |
             artifacts/deepfreezer-deb/*.deb
-            artifacts/deepfreezer-exe/*.exe
+            artifacts/deepfreezer-windows/*.zip
