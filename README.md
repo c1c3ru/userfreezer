@@ -18,10 +18,11 @@ do administrador.
   senha de admin. Única parte com dependência externa (`pystray` +
   `Pillow`), já que não existe API de bandeja na stdlib.
 
-## Pacotes prontos (.deb / .exe)
+## Pacotes prontos (.deb / .exe / ferramental Windows)
 
-O workflow `.github/workflows/build-packages.yml` builda os dois
-pacotes a cada execução:
+O workflow `.github/workflows/build-packages.yml` builda os pacotes a
+cada execução e, numa tag `vX.Y.Z`, publica todos em
+[Releases](https://github.com/c1c3ru/userfreezer/releases):
 
 - **Linux — `deepfreezer_<versão>_all.deb`**: instala o core +
   daemon em `/opt/deepfreezer`, o `config.json` em `/etc/deepfreezer`
@@ -38,22 +39,47 @@ pacotes a cada execução:
   próprio runner de CI — ver `packaging/linux/build_deb.sh` pra gerar
   localmente.
 
-- **Windows — `deepfreezer-windows.zip`**: `deepfreezer_service.exe`
-  (PyInstaller) + `install.bat`/`uninstall.bat` (clique duas vezes,
-  pedem elevação sozinhos) + os `.ps1` manuais + config de exemplo.
-  Buildado num runner `windows-latest` real, que também **instala o
-  serviço, inicia, confirma que o enforcement rodou (overlay criado a
-  partir de um alvo real) e desinstala** antes de publicar o zip —
-  ver `packaging/windows/README.md` pro que isso cobre e o que ainda
-  falta validar numa máquina Windows de verdade (fora do CI).
+- **Windows — `deepfreezer_service.exe`**: binário único gerado por
+  PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
+  num runner `windows-latest` real, com Python 3.11 — **não roda no
+  Windows 7** (Python 3.9+ não é mais compatível com ele). Isso é a
+  proteção *application-level* do core — ver "Limite honesto" mais
+  abaixo pro que ela não cobre.
 
-Como baixar: abra a
-[aba Actions do build-packages](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml),
-entre no run mais recente e pegue os artifacts `deepfreezer-deb` /
-`deepfreezer-windows` (expiram em ~90 dias). Empurrando uma tag
-`vX.Y.Z` o mesmo workflow também publica os dois em
-[Releases](https://github.com/c1c3ru/userfreezer/releases) (link
-permanente) — isso ainda não foi feito neste repositório.
+- **Windows 7 — `deepfreezer_service_win7.exe`**: o mesmo binário,
+  compilado à parte com Python 3.8 (a última versão compatível com
+  Windows 7). Não foi validado numa máquina Windows 7 real — se ainda
+  assim não iniciar, o próximo suspeito é o bootloader do PyInstaller.
+
+- **Windows — `deepfreezer-windows-service-scripts.zip`**:
+  `install_service_exe.ps1` (instala o serviço a partir do `.exe`
+  baixado, sem precisar de Python na máquina) + `install.bat`/
+  `uninstall.bat` (clique duas vezes, pedem elevação sozinhos, chamam
+  o `.ps1` acima) + `install_service_pywin32.ps1` /
+  `install_service_nssm.ps1` (a partir do código-fonte) +
+  `harden_acl.ps1`. O caminho `.exe` + `install_service_exe.ps1` é
+  **testado de verdade** no CI (`test-windows-service`: instala,
+  inicia, confirma que o enforcement rodou e desinstala, num runner
+  Windows real) antes de publicar; os outros caminhos e o prompt de
+  UAC do `.bat` continuam sem validar numa máquina real — ver
+  `packaging/windows/README.md` pra qual usar e o que falta.
+
+- **Windows — `deepfreezer-windows-os-level.zip`**: `os_detect.py`
+  (detecta versão/edição do Windows) + os scripts em
+  `packaging/windows/os_level/` que orquestram a proteção a nível de
+  SO (UWF, EWF/FBWF, disco diferencial VHDX — qualquer gravação,
+  não só as feitas pela API do core). Nenhum desses scripts foi
+  validado numa máquina Windows real — ver o status detalhado em
+  `packaging/windows/README.md` antes de usar em produção.
+
+Como baixar agora: abra a página de
+[Releases](https://github.com/c1c3ru/userfreezer/releases) e pegue a
+versão mais recente, ou, sem esperar uma tag, o
+[run mais recente](https://github.com/c1c3ru/userfreezer/actions/workflows/build-packages.yml)
+na aba Actions pros artifacts `deepfreezer-deb` / `deepfreezer-exe` /
+`deepfreezer-exe-win7` / `deepfreezer-windows-service-scripts` /
+`deepfreezer-windows-os-level` (esses expiram em ~90 dias; os de
+Releases são permanentes).
 
 ## Core: uso via CLI
 
@@ -126,16 +152,18 @@ O overlay (`<alvo>.dfreezer`) fica com permissão `700`/dono `root`
 depois de cada `freeze` do daemon. Detalhes em
 `packaging/linux/deepfreezer.service` e `packaging/linux/deepfreezerd.py`.
 
-### Windows (`install.bat`, ou pywin32/NSSM manual)
+### Windows (`install.bat`, ou pywin32/NSSM/Windows 7 manual)
 
-Jeito simples: extraia o zip `deepfreezer-windows` e dê duplo clique
-em `install.bat` (pede elevação sozinho, sem precisar de PowerShell
-manual). Ver `packaging/windows/README.md` pros caminhos manuais
-(`install_service_pywin32.ps1` / `install_service_nssm.ps1`), o
-hardening de ACL do overlay (`harden_acl.ps1`) e o que o CI já valida
-de verdade (instala, inicia, confirma o enforcement, desinstala) vs. o
-que só dá pra confirmar numa máquina Windows real (reboot, UAC do
-`.bat`, usuário sem privilégio).
+Jeito simples: baixe `deepfreezer_service.exe` (ou
+`deepfreezer_service_win7.exe` no Windows 7 — ver seção de pacotes
+acima) e `deepfreezer-windows-service-scripts.zip`, extraia tudo numa
+mesma pasta e dê duplo clique em `install.bat` (pede elevação sozinho,
+sem precisar de PowerShell manual). Ver `packaging/windows/README.md`
+pro passo a passo completo, os caminhos manuais
+(`install_service_exe.ps1` / `install_service_pywin32.ps1` /
+`install_service_nssm.ps1`), o hardening de ACL do overlay
+(`harden_acl.ps1`) e o que o CI já valida de verdade vs. o que só dá
+pra confirmar numa máquina Windows real.
 
 ## Bandeja do sistema (`ui/`)
 

@@ -1,32 +1,54 @@
 # DeepFreezer no Windows
 
-## Jeito mais simples: `install.bat`
+**Duplo clique no `.exe` não faz nada útil por si só.** O
+`deepfreezer_service.exe` só protege alguma coisa depois de instalado
+e iniciado como serviço do Windows — é o serviço, rodando no boot, que
+descarta as mudanças da sessão anterior e recongela. Rodá-lo com duplo
+clique direto agora mostra uma caixa de mensagem explicando isso (em
+vez de simplesmente não fazer nada, como acontecia antes); ele ainda
+não faz o enforcement nesse caso. Siga um dos caminhos abaixo.
 
-Baixe o zip `deepfreezer-windows` (aba Actions do workflow
-`build-packages`, ou Releases numa tag `vX.Y.Z`), extraia, e dê
-**duplo clique em `install.bat`**. Ele pede elevação (UAC) sozinho e
-instala o serviço `DeepFreezer` (conta `LocalSystem`) usando o
-`deepfreezer_service.exe` já empacotado — não precisa de Python nem
-de abrir PowerShell manualmente. `uninstall.bat` remove.
+## Windows 7: baixe o `.exe` certo
 
-Isso existe porque as duas alternativas manuais abaixo têm ciladas
-conhecidas do Windows: rodar `install_service_pywin32.ps1` direto
-exige lembrar do prefixo `.\` (`install_service_pywin32.ps1` sozinho
-dá "não é reconhecido como cmdlet...") *e* geralmente esbarra na
-política de execução de script (bloqueada por padrão em várias
-instalações); e dar duplo clique direto no `.exe` sem instalar antes
-não faz nada útil (ele só age quando registrado como serviço). Os
-`.bat` contornam os dois problemas: rodam com
-`-ExecutionPolicy Bypass` só para essa chamada, sem mudar política
-nenhuma no resto do sistema.
+**`deepfreezer_service.exe` (o binário padrão) não roda no Windows 7.**
+Ele é compilado com Python 3.11, e o Python deixou de suportar Windows 7
+a partir da versão 3.9 (3.8 foi a última compatível) — o processo
+simplesmente não inicia nessa versão do Windows, independente de
+qualquer script. Na página de
+[Releases](https://github.com/c1c3ru/userfreezer/releases), baixe
+**`deepfreezer_service_win7.exe`** em vez do `.exe` normal (compilado
+à parte com Python 3.8) e renomeie para `deepfreezer_service.exe`
+antes de instalar. **Isso não foi validado numa máquina Windows 7
+real** — se mesmo assim não iniciar, o próximo suspeito é o bootloader
+do PyInstaller (versões recentes também podem ter deixado de suportar
+Windows 7), não mais o Python.
 
-## Alternativas manuais (mesmo resultado, mais controle)
+## Instalando o serviço a partir do `.exe` baixado (sem Python)
 
-Ambas pedem PowerShell **elevado** (Administrador) e detectam
-sozinhas se há um `deepfreezer_service.exe` do lado do script — se
-houver (caso do zip baixado), usam ele direto; senão caem para
-`python deepfreezer_service.py` (precisa de `pip install pywin32`
-antes).
+Jeito mais simples: baixe `deepfreezer_service.exe` (ou
+`deepfreezer_service_win7.exe`, renomeado — ver acima), `install.bat`
+e `install_service_exe.ps1` da página de Releases (estão todos juntos
+no zip `deepfreezer-windows-service-scripts.zip`), coloque tudo **na
+mesma pasta** e dê **duplo clique em `install.bat`**. Ele pede
+elevação (UAC) sozinho e chama `install_service_exe.ps1` com
+`-ExecutionPolicy Bypass`, sem precisar abrir PowerShell manualmente
+nem lidar com política de execução de script. `uninstall.bat` remove.
+
+Isso existe porque rodar `install_service_exe.ps1` manualmente tem uma
+cilada comum do PowerShell: digitar só o nome do script (sem `.\` na
+frente) dá "não é reconhecido como cmdlet...", mesmo com o arquivo bem
+ali. Se preferir fazer manual mesmo assim, abra o PowerShell **como
+Administrador**, entre na pasta (`cd`) e rode:
+
+```
+.\install_service_exe.ps1
+.\install_service_exe.ps1 -Uninstall
+```
+
+## Instalando a partir do código-fonte (Python + pywin32 instalados)
+
+Duas formas de registrar o serviço a partir do repositório clonado —
+escolha uma. Ambas pedem PowerShell **elevado** (Administrador).
 
 ### 1. pywin32 (serviço nativo)
 
@@ -54,16 +76,35 @@ descarta o overlay da sessão anterior (thaw sem commit), recongela a
 árvore e restringe a ACL do overlay (`icacls`) a Administradores e
 SYSTEM — ver `harden_acl.ps1` para reaplicar isso manualmente.
 
+**Importante — o que o serviço não faz:** o freezer é *application-level*
+(ver "Limite honesto" no README da raiz). "Congelar" aqui é só tirar um
+manifesto (hash/tamanho/mtime) da árvore — o serviço nunca move os
+arquivos reais nem intercepta gravações do SO. Um arquivo criado direto
+pelo Explorer (ou por qualquer outro programa que não passe pela API/CLI
+do `deepfreezer.py`) grava direto na árvore real e **não** é descartado
+no próximo boot: ele simplesmente vira parte do novo estado "congelado"
+no próximo `freeze()`. Só é revertido o que foi escrito através de
+`df.write()`/`df.rm()`/`df.mkdirs()` (a API do core). Proteger contra
+qualquer gravação, de qualquer processo, exigiria um driver de nível de
+kernel (minifilter no Windows, overlayfs no boot no Linux) — fora do
+escopo deste core.
+
 ## Empacotando com PyInstaller
 
-**Já automatizado** em `.github/workflows/build-packages.yml` (job
-`build-exe`, roda num runner `windows-latest` de verdade — é como
-este `.exe` foi de fato buildado, já que este repositório foi
-desenvolvido num sandbox Linux): dispare o workflow manualmente (aba
-Actions → Run workflow) ou publique uma tag `vX.Y.Z` pra também
-anexar o zip em Releases. O job monta um `deepfreezer-windows.zip`
-com o `.exe` + os dois `.bat` + os `.ps1` + `config.example.json` +
-este README — é esse zip que vira o artifact/release.
+**Já automatizado** em `.github/workflows/build-packages.yml` (roda
+num runner `windows-latest` de verdade — é como este `.exe` foi de
+fato buildado, já que este repositório foi desenvolvido num sandbox
+Linux): dispare o workflow manualmente (aba Actions → Run workflow) ou
+publique uma tag `vX.Y.Z` pra também publicar tudo em Releases. Jobs:
+`build-exe` (o `.exe` normal, Python 3.11) e `build-exe-win7` (a
+variante Python 3.8) geram os binários; `package-service-scripts` zipa
+`install_service_exe.ps1` + `install_service_pywin32.ps1` +
+`install_service_nssm.ps1` + `install.bat` + `uninstall.bat` +
+`harden_acl.ps1` + este README; `package-os-level` zipa o ferramental
+de nível de SO (próxima seção). O job `test-windows-service` pega o
+`.exe` e o zip de scripts exatamente como um usuário baixaria, instala
+o serviço de verdade, inicia, confirma o enforcement e desinstala —
+ver "O que foi e o que não foi verificado" no final deste arquivo.
 
 Pra gerar manualmente numa máquina Windows (PyInstaller não faz
 cross-compile a partir de Linux/macOS, então isso não roda daqui):
@@ -71,30 +112,159 @@ cross-compile a partir de Linux/macOS, então isso não roda daqui):
 ```
 pyinstaller --onefile --noconsole --name deepfreezer_service ^
     --hidden-import win32timezone ^
+    --hidden-import deepfreezer ^
+    --paths . ^
     packaging\windows\deepfreezer_service.py
 ```
 
-O `--hidden-import win32timezone` evita um erro comum do PyInstaller
-com pywin32.
+Rode a partir da raiz do repo (`--paths .`) -- senao o PyInstaller nao
+acha `deepfreezer.py` (fica fora de `packaging\windows\`, importado via
+`sys.path.insert` em tempo de execucao) e o `.exe` quebra com
+`ModuleNotFoundError: No module named 'deepfreezer'` ao rodar. O
+`--hidden-import win32timezone` evita um erro comum do PyInstaller
+com pywin32. O `.exe` gerado (`dist\deepfreezer_service.exe`) substitui
+`python.exe "...\deepfreezer_service.py"` nos comandos acima — tanto
+`install` (modo pywin32) quanto `--foreground` (modo NSSM) funcionam
+direto no executável.
+
+## Proteção a nível de SO (qualquer gravação, de qualquer programa)
+
+Tudo descrito acima é a proteção *application-level* do core
+(`deepfreezer.py`): só reverte gravações feitas pela própria API/CLI,
+não uma gravação qualquer do Explorer ou de outro programa (ver
+"Limite honesto" no README da raiz). Para proteger a máquina inteira
+contra qualquer gravação, a estratégia depende da edição do Windows
+instalada, porque nem toda edição tem um write filter nativo:
+
+| Versão | Edições com write filter nativo | Estratégia | Edições sem (Home/Pro) |
+|---|---|---|---|
+| Windows 11 | Enterprise, Education, IoT Enterprise | `uwf` (Unified Write Filter, via `uwfmgr.exe`) | `vhdx_diff` |
+| Windows 10 | Enterprise, Education, IoT Enterprise | `uwf` | `vhdx_diff` |
+| Windows 7 | Embedded Standard, POSReady | `ewf_fbwf` (Enhanced/File-Based Write Filter) | `vhdx_diff` |
+
+`vhdx_diff` (disco diferencial VHDX no boot) é o único caminho pra
+Home/Pro em qualquer versão — funciona em qualquer edição, mas exige
+reprovisionar a máquina nesse esquema de boot, bem mais pesado que
+instalar um serviço.
+
+`packaging/windows/os_detect.py` identifica automaticamente a versão +
+edição da máquina e devolve qual estratégia usar:
+
+```
+python os_detect.py
+```
+
+```json
+{
+  "windows_version": "11",
+  "edition": "Enterprise",
+  "strategy": "uwf",
+  "reason": "edicao com Unified Write Filter nativo",
+  "product_name": "Windows 11 Enterprise",
+  "build": 22631
+}
+```
+
+Windows 8/8.1 caem em `"strategy": "unsupported"` (fora do escopo
+atual — só 7/10/11). Qualquer `EditionID` não reconhecido pelo
+detector cai no fallback seguro `vhdx_diff`, nunca assume um write
+filter nativo sem confirmar contra uma lista explícita.
+
+A orquestração de cada estratégia mora em `packaging/windows/os_level/`
+(baixe `deepfreezer-windows-os-level.zip` da página de Releases, ou
+clone o repositório):
+
+- `select_strategy.ps1` — roda `os_detect.py` e aponta pro script certo.
+- `uwf_setup.ps1` — instala o feature, protege volume, exclui caminhos,
+  ativa/desativa o filtro (Windows 10/11 Enterprise/Education/IoT).
+- `ewf_fbwf_setup.ps1` — equivalente pro Windows 7 Embedded/POSReady
+  (detecta se a imagem tem `ewfmgr.exe` ou `fbwfmgr.exe` e usa o que
+  existir).
+- `vhdx_diff_setup.ps1` / `vhdx_diff_reset.ps1` — provisiona o boot por
+  disco diferencial VHDX (Home/Pro, qualquer versão) e recria o
+  diferencial pra "resetar" a máquina.
+
+**Status — o que foi verificado:**
+
+- A lógica pura de `os_detect.py` (`classify()`) tem 16 testes que
+  rodam em qualquer SO, todos passando.
+- Os quatro scripts em `os_level/` têm sintaxe validada pelo parser
+  real do PowerShell (`[System.Management.Automation.Language.Parser]::ParseFile`,
+  via PowerShell 7 instalado no sandbox Linux usado pra desenvolver
+  este repo) e a lógica de leitura do JSON + roteamento por estratégia
+  em `select_strategy.ps1` foi testada de ponta a ponta (chamando
+  `os_detect.py` de verdade e simulando cada valor de `strategy`).
+- Os comandos `uwfmgr`/`ewfmgr`/`fbwfmgr`/`diskpart`/`dism`/`bcdboot`
+  usados foram conferidos contra a documentação oficial da Microsoft
+  (links abaixo), não contra uma execução real.
+
+**Status — o que NÃO foi verificado, porque não há Windows real
+disponível pra testar:**
+
+- A leitura de verdade do registro em `get_os_info()` — se os valores
+  de `EditionID` batem com o que uma máquina real devolve, principalmente
+  nas edições Embedded/POSReady do Windows 7, que variam mais por OEM.
+- Se `uwf_setup.ps1`/`ewf_fbwf_setup.ps1` de fato protegem/revertem
+  gravações numa máquina real, ponta a ponta.
+- `vhdx_diff_setup.ps1`/`vhdx_diff_reset.ps1` inteiros — é a parte mais
+  arriscada do projeto (reconfigura o boot; um erro pode deixar a
+  máquina sem bootar) e a menos testável sem hardware/VM real. **Nunca
+  rode isso numa máquina de produção sem validar antes numa VM
+  descartável.**
+- `vhdx_diff_reset.ps1` também deixa uma lacuna deliberada: ele recria
+  o disco diferencial, mas alguém ainda precisa *rodá-lo* de um
+  ambiente de manutenção (WinPE/recuperação) antes de cada boot normal
+  — automatizar isso (customizando a imagem do WinRE pra chamar o
+  script sozinha) não foi implementado, por ser a etapa de maior risco
+  de todo o processo e a menos documentada.
+
+Antes de confiar em qualquer uma dessas estratégias em produção, rode
+`python os_detect.py` numa máquina de cada versão/edição alvo pra
+conferir o resultado, e teste o script correspondente numa VM
+descartável primeiro.
+
+Fontes usadas na implementação:
+[UWF feature](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/),
+[uwfmgr.exe reference](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/uwfmgrexe),
+[EWF Manager](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ff794092(v=winembedded.60)),
+[Deploy Windows with a VHDX (native boot)](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/deploy-windows-on-a-vhd--native-boot),
+[Create vdisk (diskpart)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/gg252579(v=ws.11)).
 
 ## O que foi e o que não foi verificado
 
-O job `build-exe` do CI, num runner Windows de verdade, agora faz uma
-verificação de ponta a ponta, não só o build: confirma que o `.exe`
-tem tamanho plausível, **instala o serviço de verdade
-(`install_service_pywin32.ps1`), inicia com `Start-Service`, confirma
-que ficou `Running`, confirma que o enforcement rodou de fato (overlay
+O **build** do `.exe` (e do `deepfreezer_service_win7.exe`, job
+`build-exe-win7`) é real: os jobs do workflow rodam num runner Windows
+de verdade, instalam pywin32 + PyInstaller e confirmam que o binário
+gerado existe e tem um tamanho plausível. Além disso, o job
+`test-windows-service` vai um passo além só pro caminho `.exe` +
+`install_service_exe.ps1` (o recomendado, via `install.bat`): baixa o
+`.exe` e o zip de scripts exatamente como um usuário faria, **instala
+o serviço de verdade, inicia com `Start-Service`, confirma que ficou
+`Running`, confirma que o enforcement rodou de fato (overlay
 `.dfreezer` criado a partir de um alvo real), confere a ACL com
-`icacls`, para o serviço e desinstala** — tudo isso falha o build se
-qualquer passo der errado. Ainda não cobre: reiniciar a máquina de
-verdade (o job só inicia o serviço manualmente, não reproduz o boot),
-`nssm`/o caminho NSSM, e o `install.bat`/UAC em si (o runner do CI já
-roda elevado, então o "pedir elevação sozinho" não é exercido ali).
+`icacls`, para o serviço e desinstala** — qualquer passo que falhar
+quebra o build antes de publicar.
+
+O que isso **não** cobre: o binário do `build-exe-win7` de fato
+**iniciar** num Windows 7 real (só sabemos que Python 3.9+ não inicia
+nele; não confirmamos que o 3.8 + o bootloader do PyInstaller usado
+bastam); os caminhos `install_service_pywin32.ps1` (a partir do
+código-fonte) e `install_service_nssm.ps1`, que continuam sem nenhuma
+execução real — o sandbox usado pra desenvolver é Linux sem
+Python+pywin32/NSSM instaláveis do jeito que a máquina alvo teria (a
+lógica de enforcement compartilhada com o Linux foi validada rodando
+em Linux, sem `icacls`, e falhou de forma controlada como esperado);
+reiniciar a máquina de verdade (o job só inicia o serviço manualmente,
+não reproduz o boot); e o `install.bat`/prompt de UAC em si (o runner
+do CI já roda elevado, então "pedir elevação sozinho" não é exercido
+ali).
 
 Antes de ir para produção, valide numa máquina Windows de verdade (não
 CI): `install.bat` de fato sobe o prompt de UAC como esperado;
-reiniciar a máquina e confirmar no log
+`install_service_pywin32.ps1` e `install_service_nssm.ps1` também
+instalam/iniciam sem erro; reiniciar a máquina e confirmar no log
 (`C:\ProgramData\DeepFreezer\deepfreezer.log`) que o enforcement rodou
 no boot; tentar acessar o `.dfreezer` logado como usuário padrão (deve
 falhar); tentar `Stop-Service DeepFreezer` sem privilégio de
-administrador (deve ser negado).
+administrador (deve ser negado); e, numa máquina Windows 7 real, que
+`deepfreezer_service_win7.exe` de fato inicia.

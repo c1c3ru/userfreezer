@@ -21,6 +21,7 @@ Config: mesmo formato JSON do Linux (ver packaging/config.example.json),
 por padrao em C:\\ProgramData\\DeepFreezer\\config.json (sobreponivel
 pela variavel de ambiente DEEPFREEZER_CONFIG).
 """
+import ctypes
 import json
 import logging
 import logging.handlers
@@ -40,6 +41,29 @@ try:
     _HAVE_PYWIN32 = True
 except ImportError:
     _HAVE_PYWIN32 = False
+
+MB_ICONWARNING = 0x30
+
+
+def _msgbox(text, title="DeepFreezer", icon=MB_ICONWARNING):
+    """Caixa de mensagem nativa do Windows (nao depende de console nem
+    de pywin32) -- unico jeito de dar feedback visivel num .exe
+    empacotado com --noconsole quando ele e' executado errado (ex.:
+    duplo clique direto, sem estar instalado como servico)."""
+    try:
+        ctypes.windll.user32.MessageBoxW(0, text, title, icon)
+    except Exception:
+        pass
+
+
+def _running_interactively():
+    """Heuristica: sessoes interativas (login local/RDP) tem a env var
+    SESSIONNAME setada pelo Terminal Services; a sessao 0 (onde o SCM
+    inicia servicos) nao tem. Usada so' para decidir se e' seguro (e
+    util) mostrar uma MessageBox -- nunca pra alterar o caminho real
+    de inicializacao do servico via SCM."""
+    return bool(os.environ.get("SESSIONNAME"))
+
 
 CONFIG_PATH = os.environ.get(
     "DEEPFREEZER_CONFIG", r"C:\ProgramData\DeepFreezer\config.json")
@@ -80,16 +104,39 @@ def _harden_overlay(path, log):
         log.warning("hardening de ACL parcial em %s: %s", path, e)
 
 
+def _event_log(is_error, msg):
+    """Registra tambem no Visualizador de Eventos do Windows (log
+    Application), alem do arquivo em C:\\ProgramData\\DeepFreezer --
+    e' onde um administrador de verdade vai procurar feedback quando o
+    enforcement falhar, em vez de caca ao arquivo de log. So' funciona
+    com pywin32 disponivel; nunca deve derrubar o enforcement se a
+    fonte de evento nao estiver registrada ou algo do tipo."""
+    if not _HAVE_PYWIN32:
+        return
+    try:
+        servicemanager.LogMsg(
+            servicemanager.EVENTLOG_ERROR_TYPE if is_error
+            else servicemanager.EVENTLOG_INFORMATION_TYPE,
+            0xF000,
+            ("DeepFreezer", msg))
+    except Exception:
+        pass
+
+
 def enforce_all(log):
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
     except (OSError, ValueError) as e:
-        log.error("erro lendo config %s: %s", CONFIG_PATH, e)
+        msg = "erro lendo config %s: %s" % (CONFIG_PATH, e)
+        log.error(msg)
+        _event_log(True, msg)
         return False
     targets = cfg.get("targets", [])
     if not targets:
-        log.error("config sem 'targets': %s", CONFIG_PATH)
+        msg = "config sem 'targets': %s" % CONFIG_PATH
+        log.error(msg)
+        _event_log(True, msg)
         return False
 
     ok = True
@@ -99,7 +146,9 @@ def enforce_all(log):
             df = DeepFreezer(target, overlay=entry.get("overlay"),
                               verify=bool(entry.get("verify", False)))
         except DeepFreezeError as e:
-            log.error("%s: %s", target, e)
+            msg = "%s: %s" % (target, e)
+            log.error(msg)
+            _event_log(True, msg)
             ok = False
             continue
         try:
@@ -107,11 +156,15 @@ def enforce_all(log):
                 log.info("%s: overlay de sessao anterior encontrado, descartando", target)
                 df.thaw(commit=False)
             r = df.freeze()
-            log.info("%s: congelado (%d caminhos, %.3fs, overlay=%s)",
-                      target, r["paths"], r["seconds"], df.overlay)
+            msg = "%s: congelado (%d caminhos, %.3fs, overlay=%s)" % (
+                target, r["paths"], r["seconds"], df.overlay)
+            log.info(msg)
+            _event_log(False, msg)
             _harden_overlay(df.overlay, log)
         except DeepFreezeError as e:
-            log.error("%s: %s", target, e)
+            msg = "%s: %s" % (target, e)
+            log.error(msg)
+            _event_log(True, msg)
             ok = False
         finally:
             df.close()
@@ -158,9 +211,33 @@ def main():
         if "--foreground" not in sys.argv:
             sys.stderr.write(
                 "aviso: pywin32 nao encontrado; rodando em modo --foreground (NSSM)\n")
+            if _running_interactively():
+                _msgbox(
+                    "DeepFreezer esta rodando em modo --foreground (sem pywin32) "
+                    "porque foi executado diretamente, sem argumentos.\n\n"
+                    "Isso faz o enforcement UMA VEZ agora, mas nao registra nada "
+                    "como servico do Windows -- ao fechar esta janela/processo, a "
+                    "protecao para. Para funcionar de verdade a cada boot, instale "
+                    "via NSSM (ver packaging\\windows\\README.md).")
         return run_foreground()
     if "--foreground" in sys.argv:
         return run_foreground()
+    if len(sys.argv) == 1 and _running_interactively():
+        # Duplo clique direto no .exe (sessao interativa, sem argumentos).
+        # Nao mexe no despacho real do SCM: so' avisa que isso nao e' o
+        # jeito certo de rodar, em vez de sair em silencio (--noconsole
+        # engole qualquer print/usage() que o pywin32 mostraria).
+        _msgbox(
+            "DeepFreezer nao esta instalado como servico do Windows.\n\n"
+            "Executar este .exe com duplo clique nao faz nada de util: ele "
+            "so' protege as pastas configuradas quando roda como servico, "
+            "reforcando o congelamento a cada boot.\n\n"
+            "Abra o PowerShell como Administrador e rode:\n"
+            "  install_service_pywin32.ps1\n\n"
+            "(ver packaging\\windows\\README.md para as duas formas de "
+            "instalar o servico)",
+            title="DeepFreezer - nao instalado como servico")
+        return 1
     win32serviceutil.HandleCommandLine(DeepFreezerService)
 
 

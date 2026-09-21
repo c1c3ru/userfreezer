@@ -12,7 +12,7 @@ if %errorLevel% neq 0 (
 )
 
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_service_pywin32.ps1" -Uninstall
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_service_exe.ps1" -Uninstall
 
 echo.
 echo Pressione qualquer tecla para fechar...
