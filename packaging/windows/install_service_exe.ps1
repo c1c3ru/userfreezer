@@ -62,6 +62,19 @@ if (-not (Test-Path $TargetConfig)) {
 }
 
 & $InstalledExe install
+
+# O servico so' fica visivel pro SCM um instante depois do "install"
+# retornar (visto na pratica: sc.exe config logo em seguida falhava
+# com "OpenService FAILED 1060" porque DeepFreezer ainda nao existia).
+# Espera ate 10s antes de seguir pro sc.exe config.
+$deadline = (Get-Date).AddSeconds(10)
+while (-not (Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue)) {
+    if ((Get-Date) -gt $deadline) {
+        throw "servico DeepFreezer nao apareceu no SCM 10s depois do install"
+    }
+    Start-Sleep -Milliseconds 300
+}
+
 & sc.exe config DeepFreezer obj= "LocalSystem"
 & sc.exe config DeepFreezer start= auto
 
