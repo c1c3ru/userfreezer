@@ -25,49 +25,53 @@ Windows 7), não mais o Python.
 
 ## Instalando o serviço a partir do `.exe` baixado (sem Python)
 
-Baixe `deepfreezer_service.exe` (ou `deepfreezer_service_win7.exe`,
-renomeado — ver acima) e `install_service_exe.ps1` da página de
-Releases (estão juntos no zip `deepfreezer-windows-service-scripts.zip`),
-coloque os dois **na mesma pasta**, abra o PowerShell **como
-Administrador**, entre nessa pasta (`cd`) e rode:
+Jeito mais simples: baixe `deepfreezer_service.exe` (ou
+`deepfreezer_service_win7.exe`, renomeado — ver acima), `install.bat`
+e `install_service_exe.ps1` da página de Releases (estão todos juntos
+no zip `deepfreezer-windows-service-scripts.zip`), coloque tudo **na
+mesma pasta** e dê **duplo clique em `install.bat`**. Ele pede
+elevação (UAC) sozinho e chama `install_service_exe.ps1` com
+`-ExecutionPolicy Bypass`, sem precisar abrir PowerShell manualmente
+nem lidar com política de execução de script. `uninstall.bat` remove.
+
+Isso existe porque rodar `install_service_exe.ps1` manualmente tem uma
+cilada comum do PowerShell: digitar só o nome do script (sem `.\` na
+frente) dá "não é reconhecido como cmdlet...", mesmo com o arquivo bem
+ali. Se preferir fazer manual mesmo assim, abra o PowerShell **como
+Administrador**, entre na pasta (`cd`) e rode:
 
 ```
 .\install_service_exe.ps1
+.\install_service_exe.ps1 -Uninstall
 ```
-
-Repare no `.\` antes do nome do script — sem ele o PowerShell não
-executa um script da pasta atual e devolve um erro de "termo não
-reconhecido", mesmo com o arquivo bem ali. `install_service_exe.ps1
--Uninstall` remove o serviço.
 
 ## Instalando a partir do código-fonte (Python + pywin32 instalados)
 
-Duas formas de registrar o servico a partir do repositório clonado —
-escolha uma:
+Duas formas de registrar o serviço a partir do repositório clonado —
+escolha uma. Ambas pedem PowerShell **elevado** (Administrador).
 
-## 1. pywin32 (serviço nativo)
-
-Requer `pip install pywin32` na máquina alvo.
+### 1. pywin32 (serviço nativo)
 
 ```
 .\install_service_pywin32.ps1
+.\install_service_pywin32.ps1 -Uninstall
 ```
 
 Roda como serviço `DeepFreezer` (classe `win32serviceutil.ServiceFramework`
 em `deepfreezer_service.py`), sob a conta `LocalSystem` (`NT AUTHORITY\SYSTEM`).
 
-## 2. NSSM (sem pywin32)
+### 2. NSSM (sem pywin32 na máquina alvo)
 
 Requer o utilitário [NSSM](https://nssm.cc) (`nssm.exe`) no PATH da máquina alvo.
-Não depende de pywin32: o mesmo `deepfreezer_service.py` roda em modo
-`--foreground` (só faz o enforcement e fica residente) e o NSSM cuida
-do ciclo de vida do processo.
+O mesmo `deepfreezer_service.py`/`.exe` roda em modo `--foreground`
+(só faz o enforcement e fica residente) e o NSSM cuida do ciclo de
+vida do processo.
 
 ```
 .\install_service_nssm.ps1 -PythonExe "C:\Python312\python.exe"
 ```
 
-Em ambos os casos o serviço, ao iniciar: para cada alvo do config
+Em todos os casos, o serviço ao iniciar: para cada alvo do config
 descarta o overlay da sessão anterior (thaw sem commit), recongela a
 árvore e restringe a ACL do overlay (`icacls`) a Administradores e
 SYSTEM — ver `harden_acl.ps1` para reaplicar isso manualmente.
@@ -87,13 +91,20 @@ escopo deste core.
 
 ## Empacotando com PyInstaller
 
-Para não depender de um Python instalado na máquina alvo, gere um
-executável único. **Já automatizado** em
-`.github/workflows/build-packages.yml` (job `build-exe`, roda num
-runner `windows-latest` de verdade — é como este `.exe` foi de fato
-buildado, já que este repositório foi desenvolvido num sandbox Linux):
-dispare o workflow manualmente (aba Actions → Run workflow) ou publique
-uma tag `vX.Y.Z` pra também anexar o `.exe` em Releases.
+**Já automatizado** em `.github/workflows/build-packages.yml` (roda
+num runner `windows-latest` de verdade — é como este `.exe` foi de
+fato buildado, já que este repositório foi desenvolvido num sandbox
+Linux): dispare o workflow manualmente (aba Actions → Run workflow) ou
+publique uma tag `vX.Y.Z` pra também publicar tudo em Releases. Jobs:
+`build-exe` (o `.exe` normal, Python 3.11) e `build-exe-win7` (a
+variante Python 3.8) geram os binários; `package-service-scripts` zipa
+`install_service_exe.ps1` + `install_service_pywin32.ps1` +
+`install_service_nssm.ps1` + `install.bat` + `uninstall.bat` +
+`harden_acl.ps1` + este README; `package-os-level` zipa o ferramental
+de nível de SO (próxima seção). O job `test-windows-service` pega o
+`.exe` e o zip de scripts exatamente como um usuário baixaria, instala
+o serviço de verdade, inicia, confirma o enforcement e desinstala —
+ver "O que foi e o que não foi verificado" no final deste arquivo.
 
 Pra gerar manualmente numa máquina Windows (PyInstaller não faz
 cross-compile a partir de Linux/macOS, então isso não roda daqui):
@@ -224,30 +235,36 @@ Fontes usadas na implementação:
 O **build** do `.exe` (e do `deepfreezer_service_win7.exe`, job
 `build-exe-win7`) é real: os jobs do workflow rodam num runner Windows
 de verdade, instalam pywin32 + PyInstaller e confirmam que o binário
-gerado existe e tem um tamanho plausível (não é só "o comando não deu
-erro"). Isso valida que o código compila e empacota no Windows — não
-que o serviço funciona como serviço, nem que o binário do
-`build-exe-win7` de fato **inicia** num Windows 7 real (só sabemos que
-Python 3.9+ não inicia nele; não confirmamos que o 3.8 + o bootloader
-do PyInstaller usado bastam).
+gerado existe e tem um tamanho plausível. Além disso, o job
+`test-windows-service` vai um passo além só pro caminho `.exe` +
+`install_service_exe.ps1` (o recomendado, via `install.bat`): baixa o
+`.exe` e o zip de scripts exatamente como um usuário faria, **instala
+o serviço de verdade, inicia com `Start-Service`, confirma que ficou
+`Running`, confirma que o enforcement rodou de fato (overlay
+`.dfreezer` criado a partir de um alvo real), confere a ACL com
+`icacls`, para o serviço e desinstala** — qualquer passo que falhar
+quebra o build antes de publicar.
 
-O que **não** foi executado: registrar o serviço (pywin32 ou NSSM),
-rodar o enforcement de verdade, aplicar `icacls`, ou qualquer
-interação com o Gerenciador de Serviços/Task Manager — nada disso
-acontece no job de build, e o sandbox usado pra desenvolver é Linux
-sem Windows/pywin32/NSSM disponíveis pra testar isso localmente (a
-lógica de enforcement compartilhada com o Linux — carregar config,
-descartar overlay da sessão anterior, recongelar — foi validada
-rodando em Linux, sem `icacls`, e falhou de forma controlada como
-esperado). Antes de ir para produção, valide em uma VM Windows:
+O que isso **não** cobre: o binário do `build-exe-win7` de fato
+**iniciar** num Windows 7 real (só sabemos que Python 3.9+ não inicia
+nele; não confirmamos que o 3.8 + o bootloader do PyInstaller usado
+bastam); os caminhos `install_service_pywin32.ps1` (a partir do
+código-fonte) e `install_service_nssm.ps1`, que continuam sem nenhuma
+execução real — o sandbox usado pra desenvolver é Linux sem
+Python+pywin32/NSSM instaláveis do jeito que a máquina alvo teria (a
+lógica de enforcement compartilhada com o Linux foi validada rodando
+em Linux, sem `icacls`, e falhou de forma controlada como esperado);
+reiniciar a máquina de verdade (o job só inicia o serviço manualmente,
+não reproduz o boot); e o `install.bat`/prompt de UAC em si (o runner
+do CI já roda elevado, então "pedir elevação sozinho" não é exercido
+ali).
 
-- Instalar por um dos caminhos acima (`install_service_exe.ps1`,
-  `install_service_pywin32.ps1` ou `install_service_nssm.ps1`) e
-  confirmar `Start-Service` (ou `nssm start`) sem erro.
-- Reiniciar a máquina e confirmar no log
-  (`C:\ProgramData\DeepFreezer\deepfreezer.log`) que o enforcement
-  rodou no boot.
-- Conferir a ACL do `.dfreezer` com `icacls` (só Administradores e
-  SYSTEM) e tentar acessá-lo logado como usuário padrão (deve falhar).
-- Tentar `Stop-Service DeepFreezer` como usuário sem privilégio de
-  administrador (deve ser negado).
+Antes de ir para produção, valide numa máquina Windows de verdade (não
+CI): `install.bat` de fato sobe o prompt de UAC como esperado;
+`install_service_pywin32.ps1` e `install_service_nssm.ps1` também
+instalam/iniciam sem erro; reiniciar a máquina e confirmar no log
+(`C:\ProgramData\DeepFreezer\deepfreezer.log`) que o enforcement rodou
+no boot; tentar acessar o `.dfreezer` logado como usuário padrão (deve
+falhar); tentar `Stop-Service DeepFreezer` sem privilégio de
+administrador (deve ser negado); e, numa máquina Windows 7 real, que
+`deepfreezer_service_win7.exe` de fato inicia.

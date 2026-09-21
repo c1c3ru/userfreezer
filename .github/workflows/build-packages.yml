@@ -126,6 +126,8 @@ jobs:
             packaging/windows/install_service_exe.ps1 \
             packaging/windows/install_service_pywin32.ps1 \
             packaging/windows/install_service_nssm.ps1 \
+            packaging/windows/install.bat \
+            packaging/windows/uninstall.bat \
             packaging/windows/harden_acl.ps1 \
             packaging/windows/README.md
 
@@ -133,6 +135,101 @@ jobs:
         with:
           name: deepfreezer-windows-service-scripts
           path: dist/deepfreezer-windows-service-scripts.zip
+
+  # Testa o caminho de instalacao mais simples (so' o .exe + os scripts
+  # baixados, sem Python na maquina) exatamente como um usuario final
+  # monta: os artifacts de build-exe e package-service-scripts numa
+  # mesma pasta. Roda de verdade num windows-latest: instala, inicia,
+  # confirma que o enforcement rodou (overlay criado a partir de um
+  # alvo real), confere a ACL via icacls, para e desinstala.
+  test-windows-service:
+    runs-on: windows-latest
+    needs: [build-exe, package-service-scripts]
+    steps:
+      - name: Download the built exe
+        uses: actions/download-artifact@v4
+        with:
+          name: deepfreezer-exe
+          path: test
+
+      - name: Download the service scripts zip
+        uses: actions/download-artifact@v4
+        with:
+          name: deepfreezer-windows-service-scripts
+          path: test
+
+      - name: Extract scripts next to the exe (same layout a user gets)
+        shell: pwsh
+        run: |
+          Expand-Archive -Path test\deepfreezer-windows-service-scripts.zip -DestinationPath test -Force
+          Remove-Item test\deepfreezer-windows-service-scripts.zip
+          Get-ChildItem test
+
+      - name: Install, start and uninstall the real Windows service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          & "test\install_service_exe.ps1"
+
+          New-Item -ItemType Directory -Force -Path "C:\df-ci-target" | Out-Null
+          "original" | Out-File -Encoding ascii "C:\df-ci-target\f.txt"
+          $cfg = @{ targets = @(@{ target = "C:\df-ci-target" }) } | ConvertTo-Json
+          Set-Content -Path "C:\ProgramData\DeepFreezer\config.json" -Value $cfg
+
+          $svc = Get-Service -Name DeepFreezer
+          Write-Host "registrado: status=$($svc.Status) startType=$($svc.StartType)"
+          if ($svc.StartType -ne "Automatic") { throw "StartType inesperado: $($svc.StartType)" }
+
+          try {
+              Start-Service DeepFreezer
+          } catch {
+              Write-Host "--- Start-Service falhou. Nada no Event Log nas duas tentativas ---"
+              Write-Host "--- anteriores -- rodando 'debug' pra pegar o traceback real ---"
+              $p = Start-Process -FilePath "test\deepfreezer_service.exe" -ArgumentList "debug" `
+                  -RedirectStandardOutput "debug_stdout.txt" -RedirectStandardError "debug_stderr.txt" `
+                  -PassThru -NoNewWindow
+              Start-Sleep -Seconds 5
+              if (-not $p.HasExited) {
+                  Write-Host "(processo 'debug' ainda rodando 5s depois -- matando)"
+                  Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              } else {
+                  Write-Host "(processo 'debug' saiu sozinho, exit code $($p.ExitCode))"
+              }
+              Write-Host "--- debug stdout ---"
+              Get-Content "debug_stdout.txt" -ErrorAction SilentlyContinue
+              Write-Host "--- debug stderr ---"
+              Get-Content "debug_stderr.txt" -ErrorAction SilentlyContinue
+
+              if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
+                  Write-Host "--- deepfreezer.log ---"
+                  Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
+              } else {
+                  Write-Host "--- deepfreezer.log nao existe ---"
+              }
+              throw
+          }
+          Start-Sleep -Seconds 5
+          $svc = Get-Service -Name DeepFreezer
+          Write-Host "apos Start-Service: status=$($svc.Status)"
+          if ($svc.Status -ne "Running") { throw "servico nao ficou Running" }
+
+          if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
+              Write-Host "--- deepfreezer.log ---"
+              Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
+          }
+          if (-not (Test-Path "C:\df-ci-target.dfreezer")) {
+              throw "overlay C:\df-ci-target.dfreezer nao foi criado -- enforcement nao rodou de verdade"
+          }
+          Write-Host "--- ACL do overlay (icacls) ---"
+          icacls "C:\df-ci-target.dfreezer"
+
+          Stop-Service DeepFreezer
+          & "test\install_service_exe.ps1" -Uninstall
+          Start-Sleep -Seconds 1
+          $gone = Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue
+          if ($gone) { throw "servico ainda existe apos uninstall" }
+          Write-Host "uninstall OK -- servico DeepFreezer nao existe mais"
 
   package-os-level:
     runs-on: ubuntu-latest
@@ -154,7 +251,7 @@ jobs:
           path: dist/deepfreezer-windows-os-level.zip
 
   release:
-    needs: [build-deb, build-exe, build-exe-win7, package-service-scripts, package-os-level]
+    needs: [build-deb, build-exe, build-exe-win7, package-service-scripts, package-os-level, test-windows-service]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

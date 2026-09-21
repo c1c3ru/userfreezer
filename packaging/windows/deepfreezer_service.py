@@ -198,10 +198,20 @@ if _HAVE_PYWIN32:
             win32event.SetEvent(self.stop_event)
 
         def SvcDoRun(self):
-            servicemanager.LogMsg(
-                servicemanager.EVENTLOG_INFORMATION_TYPE,
-                servicemanager.PYS_SERVICE_STARTED,
-                (self._svc_name_, ""))
+            self.ReportServiceStatus(win32service.SERVICE_RUNNING)
+            try:
+                servicemanager.LogMsg(
+                    servicemanager.EVENTLOG_INFORMATION_TYPE,
+                    servicemanager.PYS_SERVICE_STARTED,
+                    (self._svc_name_, ""))
+            except Exception:
+                # so' um log informativo -- nao pode derrubar o servico se a
+                # fonte de evento nao estiver registrada corretamente (visto
+                # na pratica num .exe frozen pelo PyInstaller: essa chamada
+                # sem guarda travava o start inteiro com "Cannot start
+                # service", exatamente o mesmo risco que _event_log() ja
+                # existe pra evitar em todo o resto do arquivo).
+                pass
             enforce_all(self.log)
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
@@ -238,6 +248,21 @@ def main():
             "instalar o servico)",
             title="DeepFreezer - nao instalado como servico")
         return 1
+    if len(sys.argv) == 1:
+        # Sem argumentos e sem sessao interativa: e' o SCM chamando o
+        # .exe pra rodar o servico de verdade. win32serviceutil.
+        # HandleCommandLine() decidiria isso sozinho, mas a heuristica
+        # dele foi desenhada pra frozen exe no estilo py2exe -- num
+        # .exe congelado com PyInstaller ela pode nao reconhecer o
+        # contexto do SCM, e o start falha com "Cannot start service"
+        # genérico, sem nenhum log/excecao Python (SvcDoRun nunca
+        # chega a rodar; confirmado na pratica: install/sc.exe config/
+        # "debug" funcionam, so' o start real via SCM nao). Despacha
+        # direto pro SCM em vez de confiar na heuristica.
+        servicemanager.Initialize()
+        servicemanager.PrepareToHostSingle(DeepFreezerService)
+        servicemanager.StartServiceCtrlDispatcher()
+        return 0
     win32serviceutil.HandleCommandLine(DeepFreezerService)
 
 
