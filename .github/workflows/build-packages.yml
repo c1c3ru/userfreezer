@@ -184,14 +184,18 @@ jobs:
           try {
               Start-Service DeepFreezer
           } catch {
-              Write-Host "--- Start-Service falhou, checando Event Log (Application) ---"
-              Get-WinEvent -LogName Application -MaxEvents 20 -ErrorAction SilentlyContinue |
-                  Where-Object { $_.ProviderName -match "DeepFreezer|Service Control Manager" } |
+              Write-Host "--- Start-Service falhou, checando Event Log (System + Application) ---"
+              Get-WinEvent -LogName System -MaxEvents 30 -ErrorAction SilentlyContinue |
                   Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-                  Out-String -Width 200 | Write-Host
+                  Out-String -Width 300 | Write-Host
+              Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
+                  Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+                  Out-String -Width 300 | Write-Host
               if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
                   Write-Host "--- deepfreezer.log ---"
                   Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
+              } else {
+                  Write-Host "--- deepfreezer.log nao existe ---"
               }
               throw
           }
