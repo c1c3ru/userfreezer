@@ -248,6 +248,21 @@ def main():
             "instalar o servico)",
             title="DeepFreezer - nao instalado como servico")
         return 1
+    if len(sys.argv) == 1:
+        # Sem argumentos e sem sessao interativa: e' o SCM chamando o
+        # .exe pra rodar o servico de verdade. win32serviceutil.
+        # HandleCommandLine() decidiria isso sozinho, mas a heuristica
+        # dele foi desenhada pra frozen exe no estilo py2exe -- num
+        # .exe congelado com PyInstaller ela pode nao reconhecer o
+        # contexto do SCM, e o start falha com "Cannot start service"
+        # genérico, sem nenhum log/excecao Python (SvcDoRun nunca
+        # chega a rodar; confirmado na pratica: install/sc.exe config/
+        # "debug" funcionam, so' o start real via SCM nao). Despacha
+        # direto pro SCM em vez de confiar na heuristica.
+        servicemanager.Initialize()
+        servicemanager.PrepareToHostSingle(DeepFreezerService)
+        servicemanager.StartServiceCtrlDispatcher()
+        return 0
     win32serviceutil.HandleCommandLine(DeepFreezerService)
 
 
