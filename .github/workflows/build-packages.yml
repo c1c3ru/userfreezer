@@ -184,13 +184,23 @@ jobs:
           try {
               Start-Service DeepFreezer
           } catch {
-              Write-Host "--- Start-Service falhou, checando Event Log (System + Application) ---"
-              Get-WinEvent -LogName System -MaxEvents 30 -ErrorAction SilentlyContinue |
-                  Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-                  Out-String -Width 300 | Write-Host
-              Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
-                  Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-                  Out-String -Width 300 | Write-Host
+              Write-Host "--- Start-Service falhou. Nada no Event Log nas duas tentativas ---"
+              Write-Host "--- anteriores -- rodando 'debug' pra pegar o traceback real ---"
+              $p = Start-Process -FilePath "test\deepfreezer_service.exe" -ArgumentList "debug" `
+                  -RedirectStandardOutput "debug_stdout.txt" -RedirectStandardError "debug_stderr.txt" `
+                  -PassThru -NoNewWindow
+              Start-Sleep -Seconds 5
+              if (-not $p.HasExited) {
+                  Write-Host "(processo 'debug' ainda rodando 5s depois -- matando)"
+                  Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              } else {
+                  Write-Host "(processo 'debug' saiu sozinho, exit code $($p.ExitCode))"
+              }
+              Write-Host "--- debug stdout ---"
+              Get-Content "debug_stdout.txt" -ErrorAction SilentlyContinue
+              Write-Host "--- debug stderr ---"
+              Get-Content "debug_stderr.txt" -ErrorAction SilentlyContinue
+
               if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
                   Write-Host "--- deepfreezer.log ---"
                   Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
