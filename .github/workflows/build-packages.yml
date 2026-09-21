@@ -224,11 +224,10 @@ jobs:
           Write-Host "--- ACL do overlay (icacls) ---"
           icacls "C:\df-ci-target.dfreezer"
 
-          Stop-Service DeepFreezer
+          # install_service_exe.ps1 -Uninstall ja para o servico (se
+          # estiver rodando) e so' retorna depois de confirmar que ele
+          # sumiu do SCM -- nao precisa parar antes nem esperar depois.
           & "test\install_service_exe.ps1" -Uninstall
-          Start-Sleep -Seconds 1
-          $gone = Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue
-          if ($gone) { throw "servico ainda existe apos uninstall" }
           Write-Host "uninstall OK -- servico DeepFreezer nao existe mais"
 
   package-os-level:

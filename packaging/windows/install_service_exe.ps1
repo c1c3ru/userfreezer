@@ -38,8 +38,23 @@ $ConfigDir    = "C:\ProgramData\DeepFreezer"
 $InstalledExe = Join-Path $InstallDir "deepfreezer_service.exe"
 
 if ($Uninstall) {
-    & $InstalledExe stop
+    if (Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue) {
+        & $InstalledExe stop
+    }
     & $InstalledExe remove
+
+    # DeleteService() so' marca o servico "pendente de remocao" -- ele
+    # some do SCM (Get-Service) um instante depois, nao na hora (visto
+    # na pratica: um teste logo em seguida ainda enxergava o servico).
+    # Espera ate 10s antes de dar como concluido.
+    $deadline = (Get-Date).AddSeconds(10)
+    while (Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue) {
+        if ((Get-Date) -gt $deadline) {
+            throw "servico DeepFreezer ainda aparece no SCM 10s depois do remove"
+        }
+        Start-Sleep -Milliseconds 300
+    }
+
     Write-Host "servico removido ($InstallDir preservado em disco)"
     exit 0
 }
