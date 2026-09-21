@@ -181,7 +181,20 @@ jobs:
           Write-Host "registrado: status=$($svc.Status) startType=$($svc.StartType)"
           if ($svc.StartType -ne "Automatic") { throw "StartType inesperado: $($svc.StartType)" }
 
-          Start-Service DeepFreezer
+          try {
+              Start-Service DeepFreezer
+          } catch {
+              Write-Host "--- Start-Service falhou, checando Event Log (Application) ---"
+              Get-WinEvent -LogName Application -MaxEvents 20 -ErrorAction SilentlyContinue |
+                  Where-Object { $_.ProviderName -match "DeepFreezer|Service Control Manager" } |
+                  Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+                  Out-String -Width 200 | Write-Host
+              if (Test-Path "C:\ProgramData\DeepFreezer\deepfreezer.log") {
+                  Write-Host "--- deepfreezer.log ---"
+                  Get-Content "C:\ProgramData\DeepFreezer\deepfreezer.log"
+              }
+              throw
+          }
           Start-Sleep -Seconds 5
           $svc = Get-Service -Name DeepFreezer
           Write-Host "apos Start-Service: status=$($svc.Status)"

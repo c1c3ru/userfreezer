@@ -198,10 +198,20 @@ if _HAVE_PYWIN32:
             win32event.SetEvent(self.stop_event)
 
         def SvcDoRun(self):
-            servicemanager.LogMsg(
-                servicemanager.EVENTLOG_INFORMATION_TYPE,
-                servicemanager.PYS_SERVICE_STARTED,
-                (self._svc_name_, ""))
+            self.ReportServiceStatus(win32service.SERVICE_RUNNING)
+            try:
+                servicemanager.LogMsg(
+                    servicemanager.EVENTLOG_INFORMATION_TYPE,
+                    servicemanager.PYS_SERVICE_STARTED,
+                    (self._svc_name_, ""))
+            except Exception:
+                # so' um log informativo -- nao pode derrubar o servico se a
+                # fonte de evento nao estiver registrada corretamente (visto
+                # na pratica num .exe frozen pelo PyInstaller: essa chamada
+                # sem guarda travava o start inteiro com "Cannot start
+                # service", exatamente o mesmo risco que _event_log() ja
+                # existe pra evitar em todo o resto do arquivo).
+                pass
             enforce_all(self.log)
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
