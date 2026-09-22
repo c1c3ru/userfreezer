@@ -41,6 +41,21 @@ def snapshot_tree(root):
     return out
 
 
+class _ShutilEspiao(object):
+    """Delega tudo ao shutil real, avisando antes de cada rmtree."""
+
+    def __init__(self, real, ao_remover):
+        self._real = real
+        self._ao_remover = ao_remover
+
+    def __getattr__(self, nome):
+        return getattr(self._real, nome)
+
+    def rmtree(self, *a, **kw):
+        self._ao_remover()
+        return self._real.rmtree(*a, **kw)
+
+
 class BaseCase(unittest.TestCase):
     """Cria uma arvore de teste e garante a limpeza do tmpdir."""
 
@@ -313,6 +328,37 @@ class ThawDiscardTests(BaseCase):
         df.thaw()
         df2 = self.open_df()
         self.assertFalse(df2.frozen)
+
+    def test_thaw_solta_o_lock_antes_de_apagar_o_overlay(self):
+        """Regressao: no Windows nao se apaga arquivo aberto.
+
+        O LOCK mora dentro do overlay e fica aberto ate' o release(). Se o
+        rmtree vier primeiro, no Windows ele falha em silencio (por causa
+        do ignore_errors=True), o overlay sobra e a reabertura seguinte
+        morre com "overlay existe sem manifest". No Linux passa nas duas
+        ordens, entao o teste checa a ordem, nao so' o resultado.
+        """
+        import deepfreezer as dfmod
+        df = self.frozen_df()
+        visto = {}
+
+        def ao_remover():
+            visto["fd_aberto"] = df._lock.fd is not None
+            visto["lock_em_disco"] = os.path.exists(
+                os.path.join(df.overlay, "LOCK"))
+
+        real = dfmod.shutil
+        dfmod.shutil = _ShutilEspiao(real, ao_remover)
+        try:
+            df.thaw()
+        finally:
+            dfmod.shutil = real
+
+        self.assertFalse(visto["fd_aberto"],
+                         "LOCK ainda aberto no rmtree: quebra no Windows")
+        self.assertFalse(visto["lock_em_disco"],
+                         "LOCK ainda em disco no rmtree: quebra no Windows")
+        self.assertFalse(os.path.exists(df.overlay))
 
     def test_thaw_sem_freeze_e_erro(self):
         df = self.open_df()
