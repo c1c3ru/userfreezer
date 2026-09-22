@@ -39,17 +39,31 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
   próprio runner de CI — ver `packaging/linux/build_deb.sh` pra gerar
   localmente.
 
-- **Windows — `deepfreezer_service.exe`**: binário único gerado por
-  PyInstaller a partir de `packaging/windows/deepfreezer_service.py`
-  num runner `windows-latest` real, com Python 3.11 — **não roda no
-  Windows 7** (Python 3.9+ não é mais compatível com ele). Isso é a
-  proteção *application-level* do core — ver "Limite honesto" mais
-  abaixo pro que ela não cobre.
+- **Windows — dois `.exe`, um por família de sistema.** O nome do
+  arquivo já diz para qual Windows ele serve:
 
-- **Windows 7 — `deepfreezer_service_win7.exe`**: o mesmo binário,
-  compilado à parte com Python 3.8 (a última versão compatível com
-  Windows 7). Não foi validado numa máquina Windows 7 real — se ainda
-  assim não iniciar, o próximo suspeito é o bootloader do PyInstaller.
+  | Seu sistema | Baixe |
+  | --- | --- |
+  | Windows 11 | `deepfreezer_service_windows-10-11.exe` |
+  | Windows 10 | `deepfreezer_service_windows-10-11.exe` |
+  | Windows 8 / 8.1 | `deepfreezer_service_windows-7-8.exe` |
+  | Windows 7 | `deepfreezer_service_windows-7-8.exe` |
+
+  São o mesmo programa, gerado por PyInstaller a partir de
+  `packaging/windows/deepfreezer_service.py` num runner
+  `windows-latest` real. O de 10/11 é compilado com Python 3.11 e
+  **não roda no Windows 7**, porque o Python deixou de suportar esse
+  sistema a partir da versão 3.9; o de 7/8 é compilado à parte com
+  Python 3.8, a última versão compatível. Em Windows 8.1 os dois
+  tendem a funcionar, e a tabela manda o de 7/8 por ser o mais
+  conservador. **Não é preciso renomear nada**: o instalador aceita os
+  dois nomes e, se os dois estiverem na pasta, escolhe sozinho o certo
+  para o Windows em que está rodando.
+
+  Isso é a proteção *application-level* do core — ver "Limite honesto"
+  mais abaixo pro que ela não cobre. O `.exe` de Windows 7/8 nunca foi
+  executado numa máquina Windows 7 de verdade; se não iniciar, o
+  próximo suspeito é o bootloader do PyInstaller, não o Python.
 
 - **Windows — `deepfreezer-windows-service-scripts.zip`**:
   `install_service_exe.ps1` (instala o serviço a partir do `.exe`
@@ -173,11 +187,12 @@ depois de cada `freeze` do daemon. Detalhes em
 
 ### Windows (`install.bat`, ou pywin32/NSSM/Windows 7 manual)
 
-Jeito simples: baixe `deepfreezer_service.exe` (ou
-`deepfreezer_service_win7.exe` no Windows 7 — ver seção de pacotes
-acima) e `deepfreezer-windows-service-scripts.zip`, extraia tudo numa
-mesma pasta e dê duplo clique em `install.bat` (pede elevação sozinho,
-sem precisar de PowerShell manual). Ver `packaging/windows/README.md`
+Jeito simples: baixe o `.exe` da sua versão do Windows
+(`deepfreezer_service_windows-10-11.exe` ou
+`deepfreezer_service_windows-7-8.exe` — ver a tabela na seção de
+pacotes acima) e `deepfreezer-windows-service-scripts.zip`, extraia
+tudo numa mesma pasta e dê duplo clique em `install.bat` (pede elevação
+sozinho, sem precisar de PowerShell manual). Ver `packaging/windows/README.md`
 pro passo a passo completo, os caminhos manuais
 (`install_service_exe.ps1` / `install_service_pywin32.ps1` /
 `install_service_nssm.ps1`), o hardening de ACL do overlay
