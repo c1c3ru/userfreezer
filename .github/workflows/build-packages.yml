@@ -256,12 +256,32 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      # Usa a secao do CHANGELOG.md da versao sendo publicada como corpo
+      # da release. Se a tag nao tiver secao propria, sai um arquivo
+      # vazio e a release e' publicada sem corpo, como antes -- este
+      # passo nunca derruba o job.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          python3 - "${GITHUB_REF_NAME}" > release_notes.md <<'PY' || true
+          import io, re, sys
+          tag = sys.argv[1]
+          text = io.open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"^## %s\s*$(.*?)(?=^## |\Z)" % re.escape(tag),
+                        text, re.M | re.S)
+          sys.stdout.write(m.group(1).strip() if m else "")
+          PY
+          echo "--- corpo da release ---"
+          cat release_notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release_notes.md
           files: |
             artifacts/deepfreezer-deb/*.deb
             artifacts/deepfreezer-exe/*.exe
