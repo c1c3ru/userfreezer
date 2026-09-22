@@ -197,8 +197,10 @@ class DeepFreezer(object):
             raise DeepFreezeError("nada congelado para descongelar")
         if commit:
             self._apply_commit()
-        shutil.rmtree(self.overlay, ignore_errors=True)
+        # o LOCK mora dentro do overlay e fica aberto ate' o release(); no
+        # Windows nao se apaga arquivo aberto, entao soltar antes do rmtree
         self._lock.release()
+        shutil.rmtree(self.overlay, ignore_errors=True)
         self.frozen = False
         self.manifest = None
         self.ops = {}
@@ -332,6 +334,8 @@ class DeepFreezer(object):
     def write(self, rel, data):
         self._require_frozen()
         parts = self._norm(rel)
+        if not parts:
+            raise DeepFreezeError("caminho relativo invalido: %r" % rel)
         key = "/".join(parts)
         self._put_payload("W", key, data if isinstance(data, (bytes, bytearray))
                           else str(data).encode())
