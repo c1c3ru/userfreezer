@@ -4,7 +4,11 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
-## Não publicado
+## v0.1.7
+
+Versão de embalagem: o programa em si não mudou desde a v0.1.6, só o
+nome dos arquivos publicados e o caminho de instalação no Windows. Quem
+já tem o serviço instalado e funcionando não precisa fazer nada.
 
 ### Alterado
 
