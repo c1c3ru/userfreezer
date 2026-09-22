@@ -81,6 +81,25 @@ na aba Actions pros artifacts `deepfreezer-deb` / `deepfreezer-exe` /
 `deepfreezer-windows-os-level` (esses expiram em ~90 dias; os de
 Releases são permanentes).
 
+## Testes
+
+A suíte roda em qualquer SO, sem dependência externa:
+
+```
+python3 run_tests.py        # tudo; -v pra listar caso a caso
+```
+
+O `run_tests.py` procura todo arquivo `test_*.py` do repositório e roda
+o `unittest discover` em cada pasta que tiver um — um teste novo não
+precisa ser registrado em lugar nenhum, basta o nome do arquivo seguir
+`test_*.py`.
+
+O workflow `.github/workflows/tests.yml` roda essa mesma suíte (mais um
+`compileall` de todos os `.py`) a cada push na `main` e em todo pull
+request pra `main`, em Linux e Windows, com Python 3.8 (piso, o do alvo
+Windows 7) e 3.12. É só verificação: quem publica pacote continua sendo
+o `build-packages.yml`, nas tags `vX.Y.Z`.
+
 ## Core: uso via CLI
 
 ```

@@ -11,10 +11,14 @@ validado numa maquina Windows de verdade, rodando
 
 Uso: python3 packaging/windows/test_os_detect.py
 """
+import os
 import sys
 import unittest
 
-sys.path.insert(0, __file__.rsplit("/", 1)[0] or ".")
+# dirname/abspath, e nao rsplit("/"): no Windows o separador e' barra
+# invertida, entao o rsplit devolvia o caminho do proprio arquivo em
+# vez da pasta dele, e o import abaixo quebrava.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from os_detect import classify  # noqa: E402
 
 
