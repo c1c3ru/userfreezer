@@ -332,6 +332,8 @@ class DeepFreezer(object):
     def write(self, rel, data):
         self._require_frozen()
         parts = self._norm(rel)
+        if not parts:
+            raise DeepFreezeError("caminho relativo invalido: %r" % rel)
         key = "/".join(parts)
         self._put_payload("W", key, data if isinstance(data, (bytes, bytearray))
                           else str(data).encode())
