@@ -1,0 +1,57 @@
+name: tests
+
+# Gate de verificacao: roda a cada push na main e em todo pull request
+# pra main. O build-packages.yml continua responsavel so' pelo release
+# (tag v* / disparo manual) -- este workflow nao publica nada.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Push novo na mesma branch/PR cancela o run anterior, que ja' esta
+# desatualizado.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: testes (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # O projeto roda nos dois SOs, entao os testes tambem.
+          # Python 3.8 e' o piso pratico: e' a ultima versao que roda em
+          # Windows 7, alvo do build-exe-win7 no build-packages.yml.
+          # (3.8 nao tem build pro runner ubuntu-24.04, dai o 22.04.)
+          - os: ubuntu-22.04
+            python-version: "3.8"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.8"
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Pega erro de sintaxe em arquivo que nenhum teste importa ainda
+      # (ui/, packaging/...) sem precisar instalar pystray & cia.
+      - name: Checar sintaxe de todos os .py
+        run: python -m compileall -q .
+
+      - name: Rodar a suite de testes
+        run: python run_tests.py -v
