@@ -1,34 +1,50 @@
 # DeepFreezer no Windows
 
-**Duplo clique no `.exe` não faz nada útil por si só.** O
-`deepfreezer_service.exe` só protege alguma coisa depois de instalado
+**Duplo clique no `.exe` não faz nada útil por si só.** Ele só protege
+alguma coisa depois de instalado
 e iniciado como serviço do Windows — é o serviço, rodando no boot, que
 descarta as mudanças da sessão anterior e recongela. Rodá-lo com duplo
 clique direto agora mostra uma caixa de mensagem explicando isso (em
 vez de simplesmente não fazer nada, como acontecia antes); ele ainda
 não faz o enforcement nesse caso. Siga um dos caminhos abaixo.
 
-## Windows 7: baixe o `.exe` certo
+## Qual `.exe` baixar
 
-**`deepfreezer_service.exe` (o binário padrão) não roda no Windows 7.**
-Ele é compilado com Python 3.11, e o Python deixou de suportar Windows 7
-a partir da versão 3.9 (3.8 foi a última compatível) — o processo
-simplesmente não inicia nessa versão do Windows, independente de
-qualquer script. Na página de
-[Releases](https://github.com/c1c3ru/userfreezer/releases), baixe
-**`deepfreezer_service_win7.exe`** em vez do `.exe` normal (compilado
-à parte com Python 3.8) e renomeie para `deepfreezer_service.exe`
-antes de instalar. **Isso não foi validado numa máquina Windows 7
-real** — se mesmo assim não iniciar, o próximo suspeito é o bootloader
-do PyInstaller (versões recentes também podem ter deixado de suportar
-Windows 7), não mais o Python.
+São publicados dois, e o nome do arquivo já diz para qual Windows cada
+um serve:
+
+| Seu sistema | Baixe |
+| --- | --- |
+| Windows 11 | `deepfreezer_service_windows-10-11.exe` |
+| Windows 10 | `deepfreezer_service_windows-10-11.exe` |
+| Windows 8 / 8.1 | `deepfreezer_service_windows-7-8.exe` |
+| Windows 7 | `deepfreezer_service_windows-7-8.exe` |
+
+**Não é preciso renomear nada.** O `install_service_exe.ps1` aceita os
+dois nomes (e os antigos `deepfreezer_service.exe` /
+`deepfreezer_service_win7.exe`, usados até a v0.1.6) e, se os dois
+estiverem na mesma pasta, escolhe sozinho pelo número de build do
+Windows em que está rodando. O binário instalado em
+`C:\Program Files\DeepFreezer` sempre se chama
+`deepfreezer_service.exe`, venha de qual arquivo vier, então o
+`-Uninstall` funciona igual nos dois casos.
+
+**Por que dois.** O de 10/11 é compilado com Python 3.11, e o Python
+deixou de suportar Windows 7 a partir da versão 3.9 (3.8 foi a última
+compatível) — nele o processo simplesmente não inicia, independente de
+qualquer script. O de 7/8 é o mesmo programa compilado à parte com
+Python 3.8. Em Windows 8.1 os dois tendem a funcionar; a tabela manda o
+de 7/8 por ser o mais conservador. **O `.exe` de Windows 7/8 nunca foi
+validado numa máquina Windows 7 real** — se mesmo assim não iniciar, o
+próximo suspeito é o bootloader do PyInstaller (versões recentes também
+podem ter deixado de suportar Windows 7), não mais o Python.
 
 ## Instalando o serviço a partir do `.exe` baixado (sem Python)
 
-Jeito mais simples: baixe `deepfreezer_service.exe` (ou
-`deepfreezer_service_win7.exe`, renomeado — ver acima), `install.bat`
-e `install_service_exe.ps1` da página de Releases (estão todos juntos
-no zip `deepfreezer-windows-service-scripts.zip`), coloque tudo **na
+Jeito mais simples: baixe o `.exe` da sua versão do Windows (ver a
+tabela acima), `install.bat` e `install_service_exe.ps1` da página de
+Releases (os scripts estão todos juntos no zip
+`deepfreezer-windows-service-scripts.zip`), coloque tudo **na
 mesma pasta** e dê **duplo clique em `install.bat`**. Ele pede
 elevação (UAC) sozinho e chama `install_service_exe.ps1` com
 `-ExecutionPolicy Bypass`, sem precisar abrir PowerShell manualmente
@@ -232,7 +248,7 @@ Fontes usadas na implementação:
 
 ## O que foi e o que não foi verificado
 
-O **build** do `.exe` (e do `deepfreezer_service_win7.exe`, job
+O **build** dos dois `.exe` (o de Windows 10/11 e o de Windows 7/8, job
 `build-exe-win7`) é real: os jobs do workflow rodam num runner Windows
 de verdade, instalam pywin32 + PyInstaller e confirmam que o binário
 gerado existe e tem um tamanho plausível. Além disso, o job
@@ -267,4 +283,4 @@ instalam/iniciam sem erro; reiniciar a máquina e confirmar no log
 no boot; tentar acessar o `.dfreezer` logado como usuário padrão (deve
 falhar); tentar `Stop-Service DeepFreezer` sem privilégio de
 administrador (deve ser negado); e, numa máquina Windows 7 real, que
-`deepfreezer_service_win7.exe` de fato inicia.
+`deepfreezer_service_windows-7-8.exe` de fato inicia.

@@ -2,8 +2,9 @@
 setlocal
 
 :: Instala o DeepFreezer como servico Windows (conta LocalSystem) a
-:: partir do deepfreezer_service.exe desta mesma pasta -- nao precisa
-:: de Python instalado. So' precisa clicar duas vezes: pede elevacao
+:: partir do .exe desta mesma pasta (o de Windows 10/11 ou o de
+:: Windows 7/8, tanto faz o nome) -- nao precisa de Python instalado
+:: nem renomear arquivo. So' precisa clicar duas vezes: pede elevacao
 :: (UAC) sozinho e roda o instalador sem precisar abrir PowerShell
 :: manualmente nem lidar com politica de execucao de script.
 

@@ -6,16 +6,20 @@
 # Use install_service_pywin32.ps1 em vez deste se voce tem Python +
 # pywin32 instalados e prefere rodar a partir do codigo-fonte.
 #
-# Windows 7: baixe deepfreezer_service_win7.exe (nao o
-# deepfreezer_service.exe normal) e renomeie pra
-# deepfreezer_service.exe antes de rodar este script -- o binario
-# padrao e' compilado com uma versao de Python que nao roda em
-# Windows 7 (ver packaging/windows/README.md).
+# Sao publicados dois .exe, um por familia de Windows:
+#
+#   deepfreezer_service_windows-10-11.exe   Windows 10 e 11
+#   deepfreezer_service_windows-7-8.exe     Windows 7, 8 e 8.1
+#
+# Este script aceita qualquer um dos dois (e os nomes antigos
+# deepfreezer_service.exe / deepfreezer_service_win7.exe, usados ate' a
+# v0.1.6) -- NAO e' preciso renomear nada. Com os dois na mesma pasta,
+# ele escolhe sozinho pelo Windows em que esta' rodando.
 #
 # Rodar em PowerShell elevado (Administrador).
 #
 # Uso:
-#   coloque deepfreezer_service.exe na MESMA PASTA deste script, entao:
+#   coloque o .exe baixado na MESMA PASTA deste script, entao:
 #   .\install_service_exe.ps1
 #   .\install_service_exe.ps1 -Uninstall
 
@@ -32,10 +36,40 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SourceExe    = Join-Path $ScriptDir "deepfreezer_service.exe"
 $InstallDir   = "C:\Program Files\DeepFreezer"
 $ConfigDir    = "C:\ProgramData\DeepFreezer"
 $InstalledExe = Join-Path $InstallDir "deepfreezer_service.exe"
+
+# Primeiro build do Windows 10; tudo abaixo disso e' 8.1 ou mais velho.
+$Win10FirstBuild = 10240
+
+# Acha o .exe na pasta do script, aceitando os dois nomes publicados
+# (um por familia de Windows) e os dois nomes antigos, usados ate' a
+# v0.1.6. Com os dois atuais presentes, escolhe pelo build do Windows.
+# O binario instalado sempre se chama deepfreezer_service.exe, venha de
+# qual arquivo vier, pro -Uninstall nao depender de qual foi usado.
+function Find-SourceExe {
+    $modern = Join-Path $ScriptDir "deepfreezer_service_windows-10-11.exe"
+    $legacy = Join-Path $ScriptDir "deepfreezer_service_windows-7-8.exe"
+
+    $hasModern = Test-Path $modern
+    $hasLegacy = Test-Path $legacy
+
+    if ($hasModern -and $hasLegacy) {
+        if ([Environment]::OSVersion.Version.Build -ge $Win10FirstBuild) {
+            return $modern
+        }
+        return $legacy
+    }
+    if ($hasModern) { return $modern }
+    if ($hasLegacy) { return $legacy }
+
+    foreach ($antigo in @("deepfreezer_service.exe", "deepfreezer_service_win7.exe")) {
+        $caminho = Join-Path $ScriptDir $antigo
+        if (Test-Path $caminho) { return $caminho }
+    }
+    return $null
+}
 
 if ($Uninstall) {
     if (Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue) {
@@ -59,16 +93,29 @@ if ($Uninstall) {
     exit 0
 }
 
-if (-not (Test-Path $SourceExe)) {
-    throw ("deepfreezer_service.exe nao encontrado em $ScriptDir -- baixe da " +
+$SourceExe = Find-SourceExe
+if (-not $SourceExe) {
+    throw ("nenhum .exe do DeepFreezer encontrado em $ScriptDir -- baixe da " +
         "pagina de Releases (https://github.com/c1c3ru/userfreezer/releases) " +
-        "e coloque ao lado deste script antes de rodar")
+        "e coloque ao lado deste script antes de rodar: " +
+        "deepfreezer_service_windows-10-11.exe no Windows 10/11, " +
+        "deepfreezer_service_windows-7-8.exe no Windows 7/8/8.1")
+}
+
+$NomeExe = Split-Path -Leaf $SourceExe
+$Build   = [Environment]::OSVersion.Version.Build
+Write-Host "usando $NomeExe (Windows build $Build)"
+
+if ($NomeExe -eq "deepfreezer_service_windows-10-11.exe" -and $Build -lt $Win10FirstBuild) {
+    Write-Warning ("este .exe e' compilado com Python 3.11 e provavelmente nao " +
+        "inicia neste Windows -- baixe deepfreezer_service_windows-7-8.exe " +
+        "e rode de novo se o servico nao subir")
 }
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir  | Out-Null
 
-Copy-Item $SourceExe $InstallDir -Force
+Copy-Item $SourceExe $InstalledExe -Force
 
 $TargetConfig = Join-Path $ConfigDir "config.json"
 if (-not (Test-Path $TargetConfig)) {
