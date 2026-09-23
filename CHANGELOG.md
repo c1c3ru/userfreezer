@@ -4,6 +4,29 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.7
+
+Versão de embalagem: o programa em si não mudou desde a v0.1.6, só o
+nome dos arquivos publicados e o caminho de instalação no Windows. Quem
+já tem o serviço instalado e funcionando não precisa fazer nada.
+
+### Alterado
+
+- **O nome de cada `.exe` agora diz para qual Windows ele serve.** Eram
+  `deepfreezer_service.exe` e `deepfreezer_service_win7.exe`, e não dava
+  para saber pelo nome que o primeiro é o de Windows 10 e 11. Passaram a
+  ser `deepfreezer_service_windows-10-11.exe` e
+  `deepfreezer_service_windows-7-8.exe`. Toda release passa a trazer, no
+  fim das notas, uma tabela dizendo qual arquivo baixar para cada
+  sistema.
+- **Não é mais preciso renomear o `.exe` no Windows 7.** Antes, quem
+  usava o binário de Windows 7 tinha que renomeá-lo para
+  `deepfreezer_service.exe` antes de instalar. Agora o instalador aceita
+  os dois nomes novos e os dois antigos e, se os dois estiverem na mesma
+  pasta, escolhe sozinho o certo para o Windows em que está rodando.
+  Avisa também quando o `.exe` de 10/11 foi posto num Windows mais
+  antigo, em vez de deixar o serviço falhar sem explicação.
+
 ## v0.1.6
 
 Versão de correções e testes. Nada muda na forma de usar: quem está na
