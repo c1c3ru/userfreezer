@@ -44,6 +44,11 @@ except ImportError:
 
 MB_ICONWARNING = 0x30
 
+# "The service process could not connect to the service controller" --
+# e' o que StartServiceCtrlDispatcher() devolve quando o processo NAO
+# foi iniciado pelo SCM (duplo clique, por exemplo).
+ERRO_NAO_INICIADO_PELO_SCM = 1063
+
 
 def _msgbox(text, title="DeepFreezer", icon=MB_ICONWARNING):
     """Caixa de mensagem nativa do Windows (nao depende de console nem
@@ -216,6 +221,64 @@ if _HAVE_PYWIN32:
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
 
+def _dispatch_or_explain():
+    """Chamado sem argumentos: pode ser o SCM iniciando o servico ou
+    alguem dando duplo clique no .exe.
+
+    Despacha pro SCM PRIMEIRO e decide pelo resultado, em vez de tentar
+    adivinhar o contexto antes. O caminho do SCM nao admite nada que
+    bloqueie: ele espera 30s pelo processo se conectar e, se a conexao
+    nao vier, aborta com o evento 7009 e nenhum log nem excecao Python.
+
+    A versao anterior decidia por heuristica (a env var SESSIONNAME)
+    ANTES de despachar, e abria uma MessageBox modal quando ela estava
+    presente. Num servico isso e' fatal: SESSIONNAME e' herdada pelo
+    processo do servico se existir como variavel de ambiente de
+    sistema, e a caixa entao abre na sessao 0, invisivel e sem ninguem
+    pra fechar -- o processo fica bloqueado pra sempre e nunca chega a
+    se conectar. Resultado exato: 7009.
+
+    Ja o erro 1063 do dispatcher e' um teste confiavel de "nao fui
+    iniciado pelo SCM", e ele nunca bloqueia."""
+    log = _setup_logging()
+    log.info("iniciado sem argumentos (frozen=%s): despachando pro SCM",
+             bool(getattr(sys, "frozen", False)))
+
+    try:
+        servicemanager.Initialize()
+    except Exception:
+        # Registrar a fonte de evento e' opcional, igual ao LogMsg do
+        # SvcDoRun: nao pode impedir o despacho, senao volta a virar
+        # timeout no SCM sem explicacao nenhuma.
+        log.warning("servicemanager.Initialize() falhou; seguindo sem ele")
+
+    servicemanager.PrepareToHostSingle(DeepFreezerService)
+    try:
+        servicemanager.StartServiceCtrlDispatcher()
+    except Exception as e:
+        # E' um pywintypes.error; comparado pelo atributo winerror pra
+        # nao precisar importar pywintypes so' por causa disto.
+        if getattr(e, "winerror", None) != ERRO_NAO_INICIADO_PELO_SCM:
+            log.exception("falha despachando o servico pro SCM")
+            raise
+        log.info("nao foi o SCM que iniciou este processo (erro 1063)")
+        if _running_interactively():
+            # Duplo clique direto no .exe. Aqui bloquear e' inofensivo:
+            # ha' um usuario na frente da tela pra fechar a caixa.
+            _msgbox(
+                "DeepFreezer nao esta instalado como servico do Windows.\n\n"
+                "Executar este .exe com duplo clique nao faz nada de util: ele "
+                "so' protege as pastas configuradas quando roda como servico, "
+                "reforcando o congelamento a cada boot.\n\n"
+                "Abra o PowerShell como Administrador e rode:\n"
+                "  install_service_exe.ps1\n\n"
+                "(ver packaging\\windows\\README.md para as formas de "
+                "instalar o servico)",
+                title="DeepFreezer - nao instalado como servico")
+        return 1
+    return 0
+
+
 def main():
     if not _HAVE_PYWIN32:
         if "--foreground" not in sys.argv:
@@ -232,37 +295,17 @@ def main():
         return run_foreground()
     if "--foreground" in sys.argv:
         return run_foreground()
-    if len(sys.argv) == 1 and _running_interactively():
-        # Duplo clique direto no .exe (sessao interativa, sem argumentos).
-        # Nao mexe no despacho real do SCM: so' avisa que isso nao e' o
-        # jeito certo de rodar, em vez de sair em silencio (--noconsole
-        # engole qualquer print/usage() que o pywin32 mostraria).
-        _msgbox(
-            "DeepFreezer nao esta instalado como servico do Windows.\n\n"
-            "Executar este .exe com duplo clique nao faz nada de util: ele "
-            "so' protege as pastas configuradas quando roda como servico, "
-            "reforcando o congelamento a cada boot.\n\n"
-            "Abra o PowerShell como Administrador e rode:\n"
-            "  install_service_pywin32.ps1\n\n"
-            "(ver packaging\\windows\\README.md para as duas formas de "
-            "instalar o servico)",
-            title="DeepFreezer - nao instalado como servico")
-        return 1
     if len(sys.argv) == 1:
-        # Sem argumentos e sem sessao interativa: e' o SCM chamando o
-        # .exe pra rodar o servico de verdade. win32serviceutil.
-        # HandleCommandLine() decidiria isso sozinho, mas a heuristica
-        # dele foi desenhada pra frozen exe no estilo py2exe -- num
-        # .exe congelado com PyInstaller ela pode nao reconhecer o
-        # contexto do SCM, e o start falha com "Cannot start service"
-        # genérico, sem nenhum log/excecao Python (SvcDoRun nunca
-        # chega a rodar; confirmado na pratica: install/sc.exe config/
-        # "debug" funcionam, so' o start real via SCM nao). Despacha
-        # direto pro SCM em vez de confiar na heuristica.
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(DeepFreezerService)
-        servicemanager.StartServiceCtrlDispatcher()
-        return 0
+        # Sem argumentos: pode ser o SCM ou duplo clique.
+        # win32serviceutil.HandleCommandLine() decidiria isso sozinho,
+        # mas a heuristica dele foi desenhada pra frozen exe no estilo
+        # py2exe -- num .exe congelado com PyInstaller ela pode nao
+        # reconhecer o contexto do SCM, e o start falha com "Cannot
+        # start service" genérico, sem nenhum log/excecao Python
+        # (SvcDoRun nunca chega a rodar; confirmado na pratica:
+        # install/sc.exe config/"debug" funcionam, so' o start real via
+        # SCM nao). Despacha direto pro SCM em vez de confiar nela.
+        return _dispatch_or_explain()
     win32serviceutil.HandleCommandLine(DeepFreezerService)
 
 
