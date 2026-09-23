@@ -47,9 +47,9 @@ jobs:
       - name: Install build dependencies
         run: pip install pywin32 pyinstaller
 
-      - name: Build deepfreezer_service.exe
+      - name: Build deepfreezer_service_windows-10-11.exe
         run: >
-          pyinstaller --onefile --noconsole --name deepfreezer_service
+          pyinstaller --onefile --noconsole --name deepfreezer_service_windows-10-11
           --hidden-import win32timezone
           --hidden-import deepfreezer
           --paths .
@@ -58,7 +58,7 @@ jobs:
       - name: Sanity-check the built exe exists and is a real PE binary
         shell: pwsh
         run: |
-          $exe = "dist/deepfreezer_service.exe"
+          $exe = "dist/deepfreezer_service_windows-10-11.exe"
           if (-not (Test-Path $exe)) { throw "exe nao foi gerado: $exe" }
           $item = Get-Item $exe
           Write-Host "gerado: $($item.FullName) ($($item.Length) bytes)"
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: deepfreezer-exe
-          path: dist/deepfreezer_service.exe
+          path: dist/deepfreezer_service_windows-10-11.exe
 
   # Python 3.9+ nao roda mais no Windows 7 (3.8 foi a ultima versao
   # compativel) -- o job build-exe acima usa 3.11, entao o binario que
@@ -90,9 +90,9 @@ jobs:
       - name: Install build dependencies
         run: pip install pywin32 pyinstaller
 
-      - name: Build deepfreezer_service_win7.exe (Python 3.8, compativel com Windows 7)
+      - name: Build deepfreezer_service_windows-7-8.exe (Python 3.8, compativel com Windows 7)
         run: >
-          pyinstaller --onefile --noconsole --name deepfreezer_service_win7
+          pyinstaller --onefile --noconsole --name deepfreezer_service_windows-7-8
           --hidden-import win32timezone
           --hidden-import deepfreezer
           --paths .
@@ -101,7 +101,7 @@ jobs:
       - name: Sanity-check the built exe exists and is a real PE binary
         shell: pwsh
         run: |
-          $exe = "dist/deepfreezer_service_win7.exe"
+          $exe = "dist/deepfreezer_service_windows-7-8.exe"
           if (-not (Test-Path $exe)) { throw "exe nao foi gerado: $exe" }
           $item = Get-Item $exe
           Write-Host "gerado: $($item.FullName) ($($item.Length) bytes)"
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: deepfreezer-exe-win7
-          path: dist/deepfreezer_service_win7.exe
+          path: dist/deepfreezer_service_windows-7-8.exe
 
   # Scripts de instalacao do servico (app-level), pra quem baixa so' o
   # .exe da pagina de Releases sem clonar o repositorio.
@@ -186,7 +186,7 @@ jobs:
           } catch {
               Write-Host "--- Start-Service falhou. Nada no Event Log nas duas tentativas ---"
               Write-Host "--- anteriores -- rodando 'debug' pra pegar o traceback real ---"
-              $p = Start-Process -FilePath "test\deepfreezer_service.exe" -ArgumentList "debug" `
+              $p = Start-Process -FilePath "test\deepfreezer_service_windows-10-11.exe" -ArgumentList "debug" `
                   -RedirectStandardOutput "debug_stdout.txt" -RedirectStandardError "debug_stderr.txt" `
                   -PassThru -NoNewWindow
               Start-Sleep -Seconds 5
@@ -276,6 +276,13 @@ jobs:
                         text, re.M | re.S)
           sys.stdout.write(m.group(1).strip() if m else "")
           PY
+          # A tabela de "qual arquivo baixar" e' a mesma em toda release,
+          # entao mora num arquivo so' e e' anexada aqui em vez de ser
+          # repetida em cada secao do CHANGELOG.
+          if [ -f packaging/DOWNLOADS.md ]; then
+            printf '\n\n' >> release_notes.md
+            cat packaging/DOWNLOADS.md >> release_notes.md
+          fi
           echo "--- corpo da release ---"
           cat release_notes.md
 
