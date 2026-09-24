@@ -166,12 +166,43 @@ Get-Content  C:\ProgramData\DeepFreezer\deepfreezer.log -Tail 40
 > "novo erro no Visualizador de Eventos". Preencha `targets` **antes** do
 > `Start-Service` para que o start saia limpo.
 
-| Critério | Status |
-| --- | --- |
-| `Get-Service -Name DeepFreezer` = `Running` | a verificar |
-| Continua `Running` passados os 30 s | a verificar |
-| `config.json` lido pela conta do serviço (LocalSystem) sem erro de caminho | a verificar |
-| Nenhum erro novo no Visualizador de Eventos | a verificar |
+#### Já validado num Windows real (Server 2022), com o `.exe` corrigido
+
+Run `build-packages` #21 da branch, job `test-windows-service`
+([log](https://github.com/c1c3ru/userfreezer/actions/runs/35905709176)):
+instalou o serviço a partir do `.exe`, iniciou, confirmou o enforcement e
+desinstalou. Trechos do log, com os horários:
+
+```
+18:56:17.349  registrado: status=Stopped startType=Automatic
+18:56:22.818  apos Start-Service: status=Running
+--- deepfreezer.log ---
+18:56:17,810  iniciado sem argumentos (frozen=True): despachando pro SCM
+18:56:17,875  C:\df-ci-target: congelado (1 caminhos, 0.036s, ...)
+```
+
+Duas coisas ficam provadas aqui. A primeira: o serviço sobe, fica
+`Running`, lê o `config.json` como LocalSystem e congela o alvo — ou seja,
+o refactor do despacho não quebrou o caminho que já funcionava. A segunda,
+e mais útil: **a linha de log nova aparece ~0,5 s depois do
+`Start-Service`**, o que mostra que a instrumentação da seção 1 funciona e
+que, nesse hardware, a extração do `--onefile` custa menos de meio
+segundo. É exatamente a medição que vai separar o ciclo 1 do ciclo 2 na
+máquina do usuário.
+
+O que este teste **não** cobre: ele roda em Windows Server 2022, onde
+`SESSIONNAME` não existe no ambiente de sistema. Portanto ele não reproduz
+a falha original — só confirma que o caminho normal continua sadio. A
+confirmação de que o bug sumiu depende da máquina onde ele acontece.
+
+#### Critérios de aceite
+
+| Critério | Windows Server 2022 (CI) | Windows 10 do usuário |
+| --- | --- | --- |
+| `Get-Service -Name DeepFreezer` = `Running` | OK | a verificar |
+| Continua `Running` passados os 30 s | OK aos 5 s | a verificar |
+| `config.json` lido pela conta do serviço (LocalSystem) sem erro de caminho | OK | a verificar |
+| Nenhum erro novo no Visualizador de Eventos | OK | a verificar |
 
 ---
 
@@ -200,5 +231,5 @@ mascara um start lento em vez de corrigi-lo.
 
 | Ciclo | Hipótese | Mudança | Resultado |
 | --- | --- | --- | --- |
-| 1 | MessageBox modal na sessão 0 bloqueia antes do handshake | `_dispatch_or_explain()`: despacha primeiro, detecta duplo clique pelo erro 1063 | Aguardando validação em Windows 10 |
+| 1 | MessageBox modal na sessão 0 bloqueia antes do handshake | `_dispatch_or_explain()`: despacha primeiro, detecta duplo clique pelo erro 1063 | Verde num Windows real (Server 2022); aguardando o Windows 10 do usuário |
 | 2 | Extração do `--onefile` estoura a janela de 30 s do SCM | `--onedir` no build | Não executado |
