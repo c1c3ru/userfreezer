@@ -8,6 +8,11 @@ clique direto agora mostra uma caixa de mensagem explicando isso (em
 vez de simplesmente não fazer nada, como acontecia antes); ele ainda
 não faz o enforcement nesse caso. Siga um dos caminhos abaixo.
 
+Quem só quer o passo a passo — baixar, instalar, configurar, iniciar,
+testar e desinstalar, numa página só — pode ir direto ao
+[INSTALACAO-WINDOWS.md](INSTALACAO-WINDOWS.md). Este README continua
+sendo a referência completa, incluindo a proteção a nível de SO.
+
 ## Qual `.exe` baixar
 
 São publicados dois, e o nome do arquivo já diz para qual Windows cada
