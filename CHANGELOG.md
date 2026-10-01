@@ -4,6 +4,37 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.8
+
+Corrige a falha de inicialização do serviço no Windows. Quem viu o
+`Start-Service DeepFreezer` falhar com o evento 7009 deve atualizar o
+`.exe` e reinstalar; quem já tem o serviço rodando não precisa fazer
+nada.
+
+### Corrigido
+
+- **O serviço não iniciava em algumas máquinas Windows 10**, com o evento
+  7009 no Visualizador de Eventos ("Tempo limite (30000 ms) atingido ao
+  aguardar a conexão do serviço DeepFreezer"), sem traceback do Python e
+  sem nada no `deepfreezer.log`. O programa decidia, antes de se
+  apresentar ao Windows, se tinha sido aberto com duplo clique, e nessa
+  decisão abria uma janela de aviso. Num serviço essa janela abre numa
+  área de trabalho invisível: ninguém pode fechá-la, o processo fica
+  parado esperando e o Windows desiste em 30 segundos. A decisão
+  dependia da variável `SESSIONNAME`, que o serviço herda quando ela
+  existe no ambiente de sistema — por isso a falha acontecia em algumas
+  máquinas e não em outras. Agora o programa se apresenta ao Windows
+  primeiro e só mostra a janela se descobrir, pelo erro que o próprio
+  Windows devolve, que ninguém o iniciou como serviço.
+
+### Adicionado
+
+- **7 testes do despacho do serviço Windows**, que rodam em qualquer
+  sistema (os módulos do pywin32 são substituídos por dublês) e checam a
+  ordem das chamadas. Um deles é o guarda desta regressão: com
+  `SESSIONNAME` presente, nenhuma janela pode abrir. Com os anteriores,
+  são 70 testes no total.
+
 ## v0.1.7
 
 Versão de embalagem: o programa em si não mudou desde a v0.1.6, só o
