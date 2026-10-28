@@ -67,7 +67,10 @@ def protection_status(target):
         return "active"
     if fstype:
         return "unsupported"
-    return "configured" if os.path.isdir(target) else "error"
+    # A mera existencia de um diretorio NAO prova configuracao nem
+    # montagem do OverlayFS. Nao mostrar "configured" para um alvo
+    # comum, pois isso criaria uma falsa evidencia de protecao.
+    return "inactive" if os.path.isdir(target) else "error"
 
 
 def _mount(command):
