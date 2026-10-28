@@ -55,6 +55,16 @@ class OverlayFsSafetyTests(unittest.TestCase):
             run.return_value.stdout = "ext4\n"
             self.assertEqual(overlay.protection_status("/srv/test"), "unsupported")
 
+    def test_diretorio_normal_nao_e_reportado_como_protegido(self):
+        with tempfile.TemporaryDirectory() as root:
+            with mock.patch.object(overlay.subprocess, "run") as run:
+                run.return_value.returncode = 1
+                run.return_value.stdout = ""
+                self.assertEqual(overlay.protection_status(root), "inactive")
+                self.assertEqual(
+                    overlay.protection_status(os.path.join(root, "ausente")),
+                    "error")
+
     def test_limites_da_memoria_da_montagem(self):
         with mock.patch.object(overlay, "_safe_absolute", return_value="/srv/alvo"):
             for size in (-1, 0, 15, 4097):
