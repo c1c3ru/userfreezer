@@ -43,7 +43,7 @@ for i in range(12):
     subprocess.check_call(
         ["cmd", "/c", "mklink", "/J", target, outside],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    sys.stdout.write("swapped\\n")
+    sys.stdout.write("swapped\n")
     sys.stdout.flush()
     if not sys.stdin.readline():
         raise RuntimeError("victim disconnected")
