@@ -4,14 +4,16 @@ After=local-fs.target
 Requires=local-fs.target
 
 [Service]
-Type=oneshot
-# RemainAfterExit: nao ha processo residente (nada para o overlay
-# fazer alem do enforcement de boot), mas o servico continua "active"
-# para o systemd e so pode ser parado com systemctl (root/sudo).
-RemainAfterExit=yes
+Type=simple
+# Processo residente atende IPC local autenticado via SO_PEERCRED.
+# Os comandos mutaveis exigem UID 0; consultas nao expoem segredos.
+RuntimeDirectory=deepfreezer
+RuntimeDirectoryMode=0755
 User=root
 Group=root
-ExecStart=/usr/bin/python3 -B /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json
+ExecStart=/usr/bin/python3 -B /opt/deepfreezer/deepfreezerd.py --serve --config /etc/deepfreezer/config.json
+Restart=on-failure
+RestartSec=3
 StandardOutput=journal
 StandardError=journal
 

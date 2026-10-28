@@ -29,10 +29,13 @@ import os
 import subprocess
 import sys
 import time
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deepfreezer import DeepFreezer, DeepFreezeError  # noqa: E402
 from enforcement_health import publish_health  # noqa: E402
+from admin_ipc import Broker  # noqa: E402
+from admin_ipc_win import serve_windows  # noqa: E402
 
 try:
     import servicemanager
@@ -211,12 +214,30 @@ def enforce_all(log):
     return _record_health(results, log)
 
 
+def _start_admin_ipc(log, stop_event=None):
+    broker = Broker(CONFIG_PATH, STATUS_PATH, audit=log.info)
+
+    def worker():
+        try:
+            serve_windows(broker, stop_event=stop_event, log=log)
+        except Exception as exc:
+            # Fail-closed: nenhuma operacao administrativa pela UI.
+            log.error("IPC Win32 indisponivel: %s", exc)
+            _event_log(True, "IPC administrativo falhou: %s" % exc)
+
+    thread = threading.Thread(target=worker, name="deepfreezer-ipc")
+    thread.daemon = True
+    thread.start()
+    return thread
+
+
 def run_foreground():
     """Modo NSSM: roda o enforcement uma vez e fica residente ate o
     NSSM encerrar o processo (nssm stop / servico parado)."""
     log = _setup_logging()
     if not enforce_all(log):
         log.error("Servico residente, mas enforcement com falhas; veja status.json")
+    _start_admin_ipc(log)
     while True:
         time.sleep(3600)
 
@@ -255,7 +276,10 @@ if _HAVE_PYWIN32:
                 pass
             if not enforce_all(self.log):
                 self.log.error("Servico RUNNING, mas enforcement falhou; veja status.json")
+            self.ipc_stop = threading.Event()
+            _start_admin_ipc(self.log, self.ipc_stop)
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
+            self.ipc_stop.set()
 
 
 def _dispatch_or_explain():

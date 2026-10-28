@@ -22,6 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deepfreezer import DeepFreezer, DeepFreezeError  # noqa: E402
 from enforcement_health import publish_health  # noqa: E402
+from admin_ipc import Broker, serve_unix  # noqa: E402
 
 
 def _harden_overlay(path, log):
@@ -117,6 +118,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="deepfreezerd")
     ap.add_argument("--config", default="/etc/deepfreezer/config.json")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--serve", action="store_true", help="mantem IPC ativo (systemd)")
+    ap.add_argument("--socket", default="/run/deepfreezer/admin.sock")
     a = ap.parse_args(argv)
 
     logging.basicConfig(
@@ -125,7 +128,18 @@ def main(argv=None):
     log = logging.getLogger("deepfreezerd")
 
     ok = enforce_all(a.config, log)
-    return 0 if ok else 1
+    if not a.serve:
+        return 0 if ok else 1
+    # Se o enforcement inicial falhar, o serviço continua acessivel para
+    # diagnostico, mas nao declara protecao; comandos mutaveis exigem uid=0.
+    path = os.environ.get("DEEPFREEZER_STATUS", DEFAULT_STATUS_PATH)
+    broker = Broker(a.config, path, audit=log.info)
+    try:
+        serve_unix(broker, a.socket)
+    except (OSError, RuntimeError) as exc:
+        log.error("falha do IPC local: %s", exc)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
