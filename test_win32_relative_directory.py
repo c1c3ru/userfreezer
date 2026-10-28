@@ -8,7 +8,8 @@ import unittest
 
 from win32_relative_directory import (
     directory_identity, open_relative_directory, open_trusted_root,
-    create_relative_file, create_relative_directory, delete_relative_file)
+    create_relative_file, create_relative_directory, delete_relative_file,
+    rename_relative_file)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -188,6 +189,57 @@ class NativeRelativeOpenProof(unittest.TestCase):
                             create_relative_directory(parent, name)
                         with self.assertRaises(ValueError):
                             delete_relative_file(parent, name)
+
+    def test_rename_e_replace_relativos_apos_junction_swap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            os.makedirs(old)
+            os.makedirs(outside)
+            with open(os.path.join(outside, "dest.txt"), "wb") as out:
+                out.write(b"EXTERNO")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    create_relative_file(pinned, "source.txt", b"NOVO")
+                    create_relative_file(pinned, "dest.txt", b"ANTIGO")
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(cp.returncode, 0, cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(link.returncode, 0, link.stderr)
+                    try:
+                        # Sem replace, colidir em arquivo existente falha.
+                        with self.assertRaises(OSError):
+                            rename_relative_file(pinned, "source.txt", "dest.txt")
+                        rename_relative_file(pinned, "source.txt",
+                                             "dest.txt", replace=True)
+                        self.assertFalse(os.path.exists(os.path.join(moved, "source.txt")))
+                        with open(os.path.join(moved, "dest.txt"), "rb") as inp:
+                            self.assertEqual(inp.read(), b"NOVO")
+                        with open(os.path.join(outside, "dest.txt"), "rb") as inp:
+                            self.assertEqual(inp.read(), b"EXTERNO")
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_rename_recusa_entrada_ambigua_ou_reparse(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with open_trusted_root(temp) as parent:
+                for invalid in ("..", ".", "dir/file", r"dir\\file",
+                                "bad:stream", "last.", ""):
+                    with self.subTest(invalid=invalid):
+                        with self.assertRaises(ValueError):
+                            rename_relative_file(parent, invalid, "safe.txt")
+                        with self.assertRaises(ValueError):
+                            rename_relative_file(parent, "safe.txt", invalid)
+                with self.assertRaises(ValueError):
+                    rename_relative_file(parent, "Same.txt", "same.TXT")
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
