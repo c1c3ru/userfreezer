@@ -59,7 +59,7 @@ VM descartável com checkpoint anterior.
 - [ ] Códigos de retorno nativos inspecionados; erro nunca significa sucesso.
 - [ ] Telemetria diferencia `unsupported`, `configured`,
       `pending-reboot`, `active` e `failed` com base no SO real.
-- [ ] Versão `v0.1.9` de binários Win7 executada em VM SP1 antes de declarar suporte.
+- [ ] Versão `v0.1.10` de binários Win7 executada em VM SP1 antes de declarar suporte.
 
 O CI corrente em Windows moderno/Python 3.8 não substitui VM Windows 7.
 
