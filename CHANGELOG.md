@@ -16,6 +16,11 @@ está nos commits e nos pacotes da página de
   o inode do socket que ele próprio publicou. Testes cobrem diretório
   inseguro, ancestral simbólico e cenário válido. Compatível com
   Python 3.8 e sem dependências novas.
+- **#49 — diagnóstico de OverlayFS Linux:** um diretório comum existente
+  não é mais apresentado como `configured` sem montagem; a consulta
+  retorna `inactive` até haver uma montagem detectada. Esse ajuste
+  elimina falso positivo de proteção, sem substituir ensaio de escrita
+  externa e reboot em VM.
 - **#63 — aviso de segurança:** um teste de renomeação feito por outro
   processo identificou que os handles Win32 existentes **não impedem,
   por si sós, todas as renomeações concorrentes**. A hipótese de
