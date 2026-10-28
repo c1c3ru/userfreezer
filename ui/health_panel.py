@@ -19,6 +19,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from admin_client import request  # noqa: E402
+from admin_elevation import run_admin_action  # noqa: E402
 
 
 class AdminPanel(object):
@@ -150,11 +151,10 @@ class AdminPanel(object):
                                    parent=self.root)
             return
         if operation == "freeze":
-            if not messagebox.askyesno("Confirmacao",
-                                       "Congelar este alvo via servico?\n%s" % target,
-                                       parent=self.root):
+            if not messagebox.askyesno(
+                    "Confirmacao", "Congelar este alvo via servico?\n%s" % target,
+                    parent=self.root):
                 return
-            confirmation = None
         else:
             label = "COMMIT" if operation == "commit" else "DESCARTAR"
             verb = ("APLICAR permanentemente as alteracoes" if operation == "commit"
@@ -165,25 +165,19 @@ class AdminPanel(object):
                 (verb, target, label), parent=self.root)
             if response != label:
                 return
-            try:
-                challenge = self._request("prepare", target, operation=operation)
-                confirmation = challenge["token"]
-            except (OSError, ValueError, RuntimeError, PermissionError) as exc:
-                messagebox.showerror("Autorizacao negada", str(exc), parent=self.root)
-                return
         try:
-            result = self._request(operation, target, confirm=confirmation)
+            # UI continua sem privilegios; OS promove um helper imutavel
+            # root/Program Files. Broker valida token, alvo e nonce.
+            run_admin_action(operation, target, self.socket_path)
         except (OSError, ValueError, RuntimeError, PermissionError) as exc:
-            messagebox.showerror("Falha na operacao",
-                                 "O servico recusou o comando: %s\n"
-                                 "A autorizacao pertence ao sistema operacional "
-                                 "(UID root / Windows Administrators elevado)." % exc,
-                                 parent=self.root)
+            messagebox.showerror("Falha na autorizacao",
+                                 "%s\nNenhuma operacao local de fallback foi executada." %
+                                 exc, parent=self.root)
+            self.refresh()
             return
-        messagebox.showinfo("DeepFreezer",
-                            "Acao executada no alvo: %s\nCongelado: %s" %
-                            (result["target"], result["frozen"]),
-                            parent=self.root)
+        messagebox.showinfo(
+            "DeepFreezer", "Comando concluido pelo servico autorizado.",
+            parent=self.root)
         self.refresh()
 
 
