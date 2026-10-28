@@ -59,6 +59,10 @@ jobs:
 
       - name: Rodar a suite de testes
         run: python run_tests.py -v
+      - name: Smoke Tk Windows em processo GUI isolado
+        if: runner.os == 'Windows'
+        run: python -m unittest -v ui.smoke_panel_windows
+
       - name: Verificar prova de reboot no VM probe (Windows PowerShell)
         if: runner.os == 'Windows'
         shell: pwsh
