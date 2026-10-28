@@ -155,6 +155,17 @@ diretórios autorizados com alterações desviadas para tmpfs. **Não é
 habilitado automaticamente, não protege a raiz do SO** e deve ser
 validado em VM antes do uso. Veja `docs/LINUX_OVERLAYFS_VM.md`.
 
+**Aviso de segurança (v0.1.11):** a implementação Win32 atual **não
+garante isolamento contra troca concorrente de diretórios** durante
+`thaw --commit`. O teste cross-process do
+[PR #84](https://github.com/c1c3ru/userfreezer/pull/84)
+demonstrou uma renomeação não bloqueada no runner Windows.
+Evite commits quando processos não confiáveis puderem alterar
+simultaneamente a árvore e consulte a
+[issue #63](https://github.com/c1c3ru/userfreezer/issues/63)
+para o estado da correção. Isso não afeta a afirmação de que o núcleo
+é apenas *application-level*.
+
 **Limite honesto:** o freezer é *application-level* — protege a árvore
 contra mudanças feitas por quem passa pela API/CLI. Um `sed -i`
 externo direto no arquivo ainda mexe no disco de verdade. Congelar o
