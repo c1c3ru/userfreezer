@@ -91,3 +91,31 @@ nem descartar o overlay** até existir um backend com semântica comprovada.
 `thaw(commit=False)` continua disponível. O painel mostra a restrição
 antes de oferecer qualquer autorização UAC. Linux mantém commit POSIX
 baseado em `dir_fd`/`O_NOFOLLOW`. A #63 permanece aberta.
+
+## Autostart da bandeja (somente usuario atual)
+
+A tela gráfica inicia sem root/Administrador; para abrir a bandeja
+automaticamente no login de um usuario, rode:
+
+```bash
+python ui/autostart.py --install
+python ui/autostart.py --remove
+```
+
+No Linux, cria/remove `~/.config/autostart/deepfreezer-tray.desktop`
+(`XDG_CONFIG_HOME` quando definido). No Windows 7+, usa somente
+`HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`, sem
+alterar `HKLM` nem executar UAC para iniciar a interface.
+
+O serviço privilegiado precisa estar instalado **separadamente** antes
+de usar a UI. Autostart de usuário não instala/modifica serviços nem
+altera a proteção de um volume.
+
+## Screenshot e teste de interface Linux
+
+O job `painel Tk em sessao virtual X11 e screenshot` do workflow `tests`
+renderiza uma instância real de Tk/ttk sob Xvfb e publica o artefato
+`deepfreezer-panel-linux-ci` com screenshot `panel-linux.png`.
+Os alvos e erros da imagem são **fixtures de teste**, não dados de
+estação real. O ensaio de desktop Windows 7 e aprovação UAC ainda
+exige sessão gráfica manual conforme `docs/WIN7_MANUAL_TEST.md`.

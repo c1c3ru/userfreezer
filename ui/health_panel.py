@@ -19,7 +19,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from admin_client import request  # noqa: E402
-from admin_elevation import run_admin_action  # noqa: E402
+from ui.admin_elevation import run_admin_action  # noqa: E402
 
 
 class AdminPanel(object):
