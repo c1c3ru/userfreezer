@@ -8,7 +8,7 @@ import unittest
 
 from win32_relative_directory import (
     directory_identity, open_relative_directory, open_trusted_root,
-    create_relative_file)
+    create_relative_file, create_relative_directory, delete_relative_file)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -113,6 +113,81 @@ class NativeRelativeOpenProof(unittest.TestCase):
                     with self.subTest(name=name):
                         with self.assertRaises(ValueError):
                             create_relative_file(root, name, b"a")
+
+    def test_mkdir_unlink_relativos_apos_troca_por_junction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            os.makedirs(old)
+            os.makedirs(outside)
+            sentinel = os.path.join(outside, "sentinela.txt")
+            with open(sentinel, "wb") as out:
+                out.write(b"NAO MODIFICAR")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    create_relative_file(pinned, "apagar.txt", b"somente-interno")
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(cp.returncode, 0, cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(link.returncode, 0, link.stderr)
+                    try:
+                        identity = create_relative_directory(pinned, "created")
+                        with open_trusted_root(os.path.join(moved, "created")) as newdir:
+                            self.assertEqual(directory_identity(newdir), identity)
+                        self.assertFalse(os.path.exists(os.path.join(outside, "created")))
+                        delete_relative_file(pinned, "apagar.txt")
+                        self.assertFalse(os.path.lexists(
+                            os.path.join(moved, "apagar.txt")))
+                        self.assertEqual(open(sentinel, "rb").read(),
+                                         b"NAO MODIFICAR")
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_unlink_recusa_reparse_e_diretorio(self):
+        with tempfile.TemporaryDirectory() as temp:
+            outside = os.path.join(temp, "outside")
+            root = os.path.join(temp, "root")
+            os.mkdir(root)
+            os.mkdir(outside)
+            junction = os.path.join(root, "danger")
+            with open(os.path.join(outside, "secret.txt"), "wb") as out:
+                out.write(b"preservar")
+            link = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", junction, outside],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if link.returncode:
+                self.skipTest("junction indisponivel: %r" % link.stderr)
+            try:
+                with open_trusted_root(root) as pinned:
+                    with self.assertRaises(OSError):
+                        delete_relative_file(pinned, "danger")
+                    with self.assertRaises(OSError):
+                        delete_relative_file(pinned, "missing")
+                self.assertEqual(
+                    open(os.path.join(outside, "secret.txt"), "rb").read(),
+                    b"preservar")
+            finally:
+                if os.path.lexists(junction):
+                    os.rmdir(junction)
+
+    def test_mkdir_e_unlink_recusam_traversal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with open_trusted_root(temp) as parent:
+                for name in ("..", ".", "bad/path", r"bad\\child",
+                             "bad:ads", "", "ending."):
+                    with self.subTest(name=name):
+                        with self.assertRaises(ValueError):
+                            create_relative_directory(parent, name)
+                        with self.assertRaises(ValueError):
+                            delete_relative_file(parent, name)
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
