@@ -8,7 +8,7 @@ issues [#63](https://github.com/c1c3ru/userfreezer/issues/63),
 [#56](https://github.com/c1c3ru/userfreezer/issues/56). Atualize-o em cada PR
 que altere os critérios de aceite, junto com o comentário na issue.
 
-**Versão pública de validação confirmada:** [v0.1.13](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.13), publicada em 28/10/2026. Tag, `main` e workflow apontam ao mesmo commit `b8ac4e85e07f3907a49238d18e6bdf98f5ab3e36`. [CI #40753516522](https://github.com/c1c3ru/userfreezer/actions/runs/40753516522) terminou `success` com 7 artefatos (`.deb`, dois `.exe`, dois `.zip`, SHA256SUMS, SPDX). Compare os hashes antes dos testes de VM. A `v0.2.0` **não foi
+**Versão pública de validação confirmada:** [v0.1.13](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.13), publicada em 28/10/2026. A tag da release e o workflow de publicação apontam ao commit imutável `b8ac4e85e07f3907a49238d18e6bdf98f5ab3e36`; a branch `main` pode avançar depois da tag com atualizações documentais sem alterar os binários dessa versão. [CI #40753516522](https://github.com/c1c3ru/userfreezer/actions/runs/40753516522) terminou `success` com 7 artefatos (`.deb`, dois `.exe`, dois `.zip`, SHA256SUMS, SPDX). Compare os hashes antes dos testes de VM. A `v0.2.0` **não foi
 publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
 ## Estado por issue
