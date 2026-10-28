@@ -7,6 +7,8 @@
 # numa exclusao comprovada pelo filtro.
 #
 # Preparar: .\vm_probe.ps1 -Prepare -ProbeRoot "C:\DF-Probe" -EvidenceDir "E:\evidencias"
+# Opcional: -ExcludedRoot "C:\DF-Excluido" (exclusao preconfigurada
+# no mesmo volume protegido; deve persistir apos reboot)
 # Reinicie manualmente a VM.
 # Verificar: .\vm_probe.ps1 -VerifyAfterReboot -EvidenceDir "E:\evidencias"
 param(
@@ -14,6 +16,7 @@ param(
     [switch]$VerifyAfterReboot,
     [switch]$Cleanup,
     [string]$ProbeRoot,
+    [string]$ExcludedRoot,
     [Parameter(Mandatory = $true)][string]$EvidenceDir,
     [switch]$EvidenceIsExcluded
 )
@@ -38,8 +41,27 @@ if ($Prepare) {
     if (-not (Test-Path -LiteralPath $evidenceAbs -PathType Container)) {
         throw "EvidenceDir persistente deve existir antes do teste"
     }
+    $excludedAbs = $null
+    if ($ExcludedRoot) {
+        if (-not (Test-Path -LiteralPath $ExcludedRoot -PathType Container)) {
+            throw "ExcludedRoot deve existir e ser uma exclusao real do filtro"
+        }
+        $excludedAbs = [IO.Path]::GetFullPath($ExcludedRoot)
+        if ([IO.Path]::GetPathRoot($excludedAbs) -ne $probeVolume) {
+            throw "ExcludedRoot deve estar no MESMO volume protegido"
+        }
+        if ($excludedAbs -eq $probeAbs -or
+            $excludedAbs.StartsWith($probeAbs.TrimEnd("\\") + "\\",
+                                     [StringComparison]::OrdinalIgnoreCase)) {
+            throw "ExcludedRoot nao pode ficar dentro de ProbeRoot"
+        }
+    }
     $id = [Guid]::NewGuid().ToString("N")
     $marker = Join-Path $probeAbs ("deepfreezer-external-probe-" + $id + ".txt")
+    $excludedMarker = $null
+    if ($excludedAbs) {
+        $excludedMarker = Join-Path $excludedAbs ("deepfreezer-excluded-probe-" + $id + ".txt")
+    }
     $record = Join-Path $evidenceAbs "deepfreezer-probe-record.txt"
     if (Test-Path -LiteralPath $record) {
         throw "Evidencia antiga existe: $record. Verifique ou arquive antes de novo teste."
@@ -54,12 +76,24 @@ if ($Prepare) {
         "boot_before_utc=$bootUtc",
         "evidence_dir=$evidenceAbs",
         "expected=marker_absent_after_reboot")
+    if ($excludedMarker) {
+        $lines += "excluded_marker=$excludedMarker"
+        $lines += "expected_exclusion=excluded_marker_present_after_reboot"
+    }
     [IO.File]::WriteAllLines($record, $lines,
                             (New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText($marker, ("External write at " + $ts),
                            (New-Object Text.UTF8Encoding($false)))
     if (-not (Test-Path -LiteralPath $marker)) {
         throw "falha ao criar sentinela externa"
+    }
+    if ($excludedMarker) {
+        [IO.File]::WriteAllText($excludedMarker, ("Excluded write at " + $ts),
+                               (New-Object Text.UTF8Encoding($false)))
+        if (-not (Test-Path -LiteralPath $excludedMarker)) {
+            throw "falha ao criar sentinela da exclusao"
+        }
+        Write-Host "EXCLUSAO PREPARADA: $excludedMarker"
     }
     Write-Host "PREPARADO: $marker"
     Write-Host "Reinicie MANUALMENTE a VM; depois execute -VerifyAfterReboot."
@@ -90,6 +124,13 @@ $expectedName = "deepfreezer-external-probe-" + $data["id"] + ".txt"
 if ([IO.Path]::GetFileName($data["marker"]) -cne $expectedName) {
     throw "marker nao corresponde ao GUID do registro"
 }
+$hasExcluded = $data.ContainsKey("excluded_marker")
+if ($hasExcluded) {
+    $exName = "deepfreezer-excluded-probe-" + $data["id"] + ".txt"
+    if ([IO.Path]::GetFileName($data["excluded_marker"]) -cne $exName) {
+        throw "excluded_marker nao corresponde ao GUID do registro"
+    }
+}
 if ($VerifyAfterReboot) {
     $os = Get-WmiObject Win32_OperatingSystem
     # A ausencia do arquivo so prova rollback se houve boot NOVO.
@@ -110,20 +151,40 @@ if ($VerifyAfterReboot) {
         throw "Reinicializacao NAO comprovada: boot anterior a Prepare; teste invalido"
     }
     $exists = Test-Path -LiteralPath $data["marker"]
-    $status = if ($exists) { "FAIL_marker_persistiu" } else { "PASS_marker_descartado" }
+    $excludedPresent = $false
+    if ($hasExcluded) {
+        $excludedPresent = Test-Path -LiteralPath $data["excluded_marker"]
+    }
+    if ($exists) {
+        $status = "FAIL_marker_persistiu"
+    } elseif ($hasExcluded -and -not $excludedPresent) {
+        $status = "FAIL_exclusao_nao_persistiu"
+    } elseif ($hasExcluded) {
+        $status = "PASS_marker_descartado_exclusao_persistiu"
+    } else {
+        $status = "PASS_marker_descartado"
+    }
     $ts = [DateTime]::UtcNow.ToString("o")
     $result = Join-Path $evidenceAbs "deepfreezer-probe-result.txt"
-    [IO.File]::WriteAllLines($result, @(
+    $resultLines = @(
         "id=$($data['id'])",
         "state=$status",
         "verified_utc=$ts",
         "os=$($os.Caption)",
         "build=$($os.BuildNumber)",
-        "marker=$($data['marker'])"),
+        "marker=$($data['marker'])")
+    if ($hasExcluded) {
+        $resultLines += "excluded_marker=$($data['excluded_marker'])"
+        $resultLines += "excluded_marker_present=$excludedPresent"
+    }
+    [IO.File]::WriteAllLines($result, $resultLines,
         (New-Object Text.UTF8Encoding($false)))
     Write-Host "RESULTADO: $status; evidencia: $result"
     if ($exists) {
         throw "FALHA: escrita externa persistiu; protecao OS-level NAO comprovada"
+    }
+    if ($hasExcluded -and -not $excludedPresent) {
+        throw "FALHA: exclusao configurada NAO persistiu apos reboot"
     }
     exit 0
 }
@@ -132,6 +193,10 @@ if ($Cleanup) {
     if (Test-Path -LiteralPath $data["marker"]) {
         Remove-Item -LiteralPath $data["marker"] -Force
     }
-    Write-Host "Limpeza da sentinela concluida. Evidencias preservadas."
+    if ($hasExcluded -and
+        (Test-Path -LiteralPath $data["excluded_marker"])) {
+        Remove-Item -LiteralPath $data["excluded_marker"] -Force
+    }
+    Write-Host "Limpeza das sentinelas concluida. Evidencias preservadas."
     exit 0
 }
