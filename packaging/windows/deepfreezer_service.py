@@ -32,6 +32,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deepfreezer import DeepFreezer, DeepFreezeError  # noqa: E402
+from enforcement_health import publish_health  # noqa: E402
 
 try:
     import servicemanager
@@ -73,6 +74,7 @@ def _running_interactively():
 CONFIG_PATH = os.environ.get(
     "DEEPFREEZER_CONFIG", r"C:\ProgramData\DeepFreezer\config.json")
 LOG_DIR = r"C:\ProgramData\DeepFreezer"
+STATUS_PATH = os.environ.get("DEEPFREEZER_STATUS", os.path.join(LOG_DIR, "status.json"))
 
 
 def _setup_logging():
@@ -106,7 +108,9 @@ def _harden_overlay(path, log):
              "/grant:r", "*S-1-5-18:(OI)(CI)F"],
             check=True, capture_output=True)
     except (OSError, subprocess.CalledProcessError) as e:
-        log.warning("hardening de ACL parcial em %s: %s", path, e)
+        log.error("hardening de ACL falhou em %s: %s", path, e)
+        return False
+    return True
 
 
 def _event_log(is_error, msg):
@@ -128,59 +132,91 @@ def _event_log(is_error, msg):
         pass
 
 
+def _protect_health_status(path):
+    """ACL no temporario ANTES de publicar o JSON (compativel Win7)."""
+    subprocess.run(["icacls", path, "/inheritance:r",
+                    "/grant:r", "*S-1-5-32-544:F", "*S-1-5-18:F"],
+                   check=True, capture_output=True)
+
+
+def _record_health(results, log, config_error=None):
+    try:
+        report = publish_health(STATUS_PATH, results, config_error,
+                                hardener=_protect_health_status)
+        log.info("enforcement=%s (%d/%d); escopo=application-level",
+                 report["state"], report["successful_targets"],
+                 report["total_targets"])
+        return report["state"] == "healthy"
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        log.error("Falha ao publicar status protegido %s: %s",
+                  STATUS_PATH, exc)
+        _event_log(True, "falha publicando status do enforcement: %s" % exc)
+        return False
+
+
 def enforce_all(log):
+    results = []
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
             cfg = json.load(f)
-    except (OSError, ValueError) as e:
-        msg = "erro lendo config %s: %s" % (CONFIG_PATH, e)
+        if not isinstance(cfg, dict) or not isinstance(cfg.get("targets"), list):
+            raise ValueError("config deve conter lista targets")
+        if not cfg["targets"]:
+            raise ValueError("config sem targets")
+    except (OSError, ValueError, TypeError) as exc:
+        msg = "erro lendo config %s: %s" % (CONFIG_PATH, exc)
         log.error(msg)
         _event_log(True, msg)
-        return False
-    targets = cfg.get("targets", [])
-    if not targets:
-        msg = "config sem 'targets': %s" % CONFIG_PATH
-        log.error(msg)
-        _event_log(True, msg)
+        _record_health([], log, config_error=msg)
         return False
 
-    ok = True
-    for entry in targets:
+    for entry in cfg["targets"]:
+        if not isinstance(entry, dict):
+            results.append({"target": "<invalido>", "state": "error",
+                            "error": "entrada deve ser objeto JSON"})
+            continue
         target = entry.get("target")
+        if not isinstance(target, str) or not target:
+            results.append({"target": "<invalido>", "state": "error",
+                            "error": "target deve ser caminho nao vazio"})
+            continue
+        df = None
         try:
             df = DeepFreezer(target, overlay=entry.get("overlay"),
-                              verify=bool(entry.get("verify", False)))
-        except DeepFreezeError as e:
-            msg = "%s: %s" % (target, e)
-            log.error(msg)
-            _event_log(True, msg)
-            ok = False
-            continue
-        try:
+                             verify=bool(entry.get("verify", False)))
             if df.frozen:
-                log.info("%s: overlay de sessao anterior encontrado, descartando", target)
+                log.info("%s: descartando overlay anterior", target)
                 df.thaw(commit=False)
             r = df.freeze()
+            if not _harden_overlay(df.overlay, log):
+                raise DeepFreezeError("ACL do overlay nao foi protegida")
             msg = "%s: congelado (%d caminhos, %.3fs, overlay=%s)" % (
                 target, r["paths"], r["seconds"], df.overlay)
             log.info(msg)
             _event_log(False, msg)
-            _harden_overlay(df.overlay, log)
-        except DeepFreezeError as e:
-            msg = "%s: %s" % (target, e)
+            results.append({"target": target, "state": "healthy",
+                            "overlay": df.overlay,
+                            "baseline_paths": r["paths"],
+                            "protection_scope": "application-level"})
+        except Exception as exc:
+            msg = "%s: enforcement falhou: %s" % (target, exc)
             log.error(msg)
             _event_log(True, msg)
-            ok = False
+            results.append({"target": target, "state": "error",
+                            "error": str(exc),
+                            "protection_scope": "application-level"})
         finally:
-            df.close()
-    return ok
+            if df is not None:
+                df.close()
+    return _record_health(results, log)
 
 
 def run_foreground():
     """Modo NSSM: roda o enforcement uma vez e fica residente ate o
     NSSM encerrar o processo (nssm stop / servico parado)."""
     log = _setup_logging()
-    enforce_all(log)
+    if not enforce_all(log):
+        log.error("Servico residente, mas enforcement com falhas; veja status.json")
     while True:
         time.sleep(3600)
 
@@ -217,7 +253,8 @@ if _HAVE_PYWIN32:
                 # service", exatamente o mesmo risco que _event_log() ja
                 # existe pra evitar em todo o resto do arquivo).
                 pass
-            enforce_all(self.log)
+            if not enforce_all(self.log):
+                self.log.error("Servico RUNNING, mas enforcement falhou; veja status.json")
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
 
