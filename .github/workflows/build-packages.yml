@@ -330,8 +330,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/release_metadata.py \\
-            --version "$(tr -d '[:space:]' < VERSION)" \\
+          python3 .github/scripts/release_metadata.py \
+            --version "$(tr -d '[:space:]' < VERSION)" \
             --artifacts artifacts --out release-meta
           test -s release-meta/SHA256SUMS
           test -s release-meta/release.spdx.json
