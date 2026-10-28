@@ -4,6 +4,62 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.9
+
+Atualização de segurança e recuperação do congelamento em nível de aplicação.
+Os serviços continuam gerenciando apenas operações feitas através da API do
+DeepFreezer; **esta versão não intercepta gravações externas de outros processos**.
+
+### Corrigido
+
+- **#50 — Configuração no Windows:** o instalador cria `config.json` em
+  UTF-8 sem BOM inclusive no PowerShell antigo, e o serviço continua lendo
+  arquivos legados que contêm BOM. Mantido o código compatível com Python 3.8.
+- **#45 — Lock após encerramento inesperado:** o lock passa a usar travamento
+  pelo sistema operacional (`msvcrt.locking` no Windows,
+  `fcntl.flock` no Linux), liberado quando o processo termina.
+- **#46 — Integridade de escritas repetidas:** cada operação confirmada usa
+  payload próprio; o journal aponta para essa versão, sem permitir que
+  uma gravação interrompida altere a última versão confirmada. Leitura
+  de journals antigos preservada.
+- **#47 — Isolamento do commit:** validação dos caminhos, bloqueio de
+  symlinks/junctions/reparse points detectados e operações POSIX via
+  `dir_fd`/`O_NOFOLLOW` para reduzir escape da árvore protegida.
+- **#48 — Descarte do overlay:** erro de remoção deixa de ser ignorado.
+  A trava é externa ao diretório de overlay e o marcador
+  `<overlay>.discarding` permite continuar a limpeza após interrupção.
+- **CI:** corrigido fixture de recuperação de journal após a evolução
+  do formato; a suíte foi executada em Windows e Linux com Python
+  3.8 e 3.12.
+
+### Compatibilidade e limitações
+
+- **Windows 7/8:** permanece disponível a variante compilada com Python 3.8
+  (`deepfreezer_service_windows-7-8.exe`). A suíte passou no runner
+  Windows com Python 3.8, mas **o executável ainda não foi testado
+  em Windows 7 real/VM**. Validar antes de uso em produção.
+- **Segurança Windows:** a troca concorrente de diretórios por junctions
+  ainda exige hardening nativo baseado em handles; acompanhamento na
+  [issue #63](https://github.com/c1c3ru/userfreezer/issues/63).
+- **Mudança de layout:** a trava do núcleo agora fica em
+  `<overlay>.lock`, ao lado do overlay, e pode permanecer após
+  `thaw()`. Não apague o arquivo de lock enquanto alguma instância
+  estiver ativa; não execute versões antiga e nova simultaneamente.
+- **Downgrade:** versões antigas do núcleo não interpretam payloads
+  versionados novos. Não fazer downgrade com overlay pendente sem
+  primeiro documentar/recuperar seu estado.
+- **Escopo:** operações `thaw(commit=True)` não implementam transação
+  multi-arquivo; um erro de I/O durante commit pode deixar aplicação
+  parcial, mesmo quando o erro é corretamente sinalizado.
+
+### Nota de publicação
+
+A tag v0.1.9 foi criada antes de VERSION e deste changelog serem
+atualizados, gerando inicialmente o artefato
+`deepfreezer_0.1.8_all.deb`. A correção e a retificação da release
+estão acompanhadas na [issue #64](https://github.com/c1c3ru/userfreezer/issues/64);
+**não renomeie o .deb antigo como se fosse a versão 0.1.9**.
+
 ## v0.1.8
 
 Corrige a falha de inicialização do serviço no Windows. Quem viu o
