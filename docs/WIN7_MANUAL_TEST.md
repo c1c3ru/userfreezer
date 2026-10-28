@@ -1,17 +1,16 @@
 # Roteiro de validação manual do Win7 e de proteção OS-level
 
-> **Binários válidos para validar:** [v0.1.11](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.11). A v0.1.9 tem Debian com versão interna 0.1.8 e não deve ser utilizada como prova de integridade da release. Registre o SHA-256 local do EXE Win7 e compare com `SHA256SUMS` da release antes de executar. Os testes só são considerados concluídos com logs e evidências anexadas pelo mantenedor.
+> **Binários válidos para validar:** [v0.1.12](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.12). A v0.1.9 tem Debian com versão interna 0.1.8 e não deve ser utilizada como prova de integridade da release. Registre o SHA-256 local do EXE Win7 e compare com `SHA256SUMS` da release antes de executar. Os testes só são considerados concluídos com logs e evidências anexadas pelo mantenedor.
 
 **Aplicável ao código da branch que contém as issues #49/#54.**
 Não execute scripts que modificam boot ou partições em máquina de produção.
 Sem logs e evidências externas, as issues #49/#54 **não podem ser declaradas concluídas**.
 
-> **Limitação conhecida do commit Windows (#63):** teste com processo concorrente
-> conseguiu renomear diretorio ancestral mesmo quando estava aberto com handle
-> nativo sem FILE_SHARE_DELETE. Nao execute commit em ambiente onde outro
-> processo nao confiavel pode modificar caminhos ao mesmo tempo. No roteiro,
-> registre o resultado de concorrencia e nao presuma bloqueio de junctions
-> a partir apenas de um `commit` bem-sucedido.
+> **Bloqueio de commit Windows (#63):** `thaw(commit=True)` com operações
+> pendentes agora retorna erro antes de modificar o alvo, pois o teste
+> concorrente #84 demonstrou que o handle Win32 nao bloqueia toda troca
+> de ancestral. O descarte funciona; nao tente reativar o commit
+> com patch local. Registre o resultado esperado como "BLOQUEADO".
 
 ## 1. Preparação comum (antes de modificar qualquer filtro)
 
@@ -99,7 +98,7 @@ Remova/anonimize nomes de pessoas, serial do disco ou dados sensíveis.
 **ATENÇÃO:** o CI que roda em `windows-latest` não comprova
 suporte ao Windows 7 nem substitui o ensaio do filtro na VM.
 
-## 5. Validação manual da release v0.1.10 em Windows 7 SP1
+## 5. Validação manual da release v0.1.12 em Windows 7 SP1
 
 **Responsável:** mantenedor. Não afirmar sucesso do Windows 7 até anexar
 logs e resultados completos à issue. Use Windows 7 SP1 em VM licenciada,
@@ -107,7 +106,7 @@ com snapshot ANTES da instalação; preferir um disco virtual independente.
 
 ### Binário, serviço e controle por UAC
 
-1. Baixe os artefatos da release v0.1.10, nunca o .deb incorreto
+1. Baixe os artefatos da release v0.1.12, nunca o .deb incorreto
    da v0.1.9. Verifique hashes contra SHA256SUMS publicado.
 2. Use deepfreezer_service_windows-7-8.exe e
    deepfreezer-windows-service-scripts.zip no mesmo diretório. Instale
@@ -132,7 +131,9 @@ com snapshot ANTES da instalação; preferir um disco virtual independente.
    mudou no disco.
 7. Autorize UAC somente em alvo descartável. Faça freeze, escreva
    uma alteração via API, escolha Descartar e confirme baseline
-   intacto. Repita com Aplicar/commit, confirmando efeito esperado.
+   intacto. Teste Aplicar/commit separadamente e confirme que o
+   sistema **recusa o commit no Windows**, com journal preservado e
+   alvo inalterado (bloqueio de segurança da #63).
 8. Confirme que nonce expira e não é reutilizado; SID diferente
    não pode executar ação. Cliente de pipe sem elevação recebe
    acesso negado para operações administrativas.
@@ -153,7 +154,8 @@ realmente presente na imagem licenciada.
 | EXE Win7 SP1 | Serviço e IPC iniciam | PENDENTE |
 | Named Pipe e ACL | Usuário comum não executa mutações | PENDENTE |
 | UAC negado | Alvo intacto | PENDENTE |
-| UAC aprovado | Apenas ação autorizada | PENDENTE |
+| UAC aprovado | Freeze/descarte autorizados | PENDENTE |
+| Commit Windows | Bloqueado; journal preservado | PENDENTE |
 | Overlay personalizado | Listado e operável | PENDENTE |
 | Crash/erro no descarte | Erro ou recuperação coerente | PENDENTE |
 | Reutilização do nonce | Negada | PENDENTE |
@@ -166,7 +168,7 @@ Após os ensaios, anexe em cada issue correspondente:
 - **#53/#56:** screenshot do painel, resultado dos comandos autorizados e negados, conta utilizada (usuário comum ou admin, sem dados pessoais), teste de UAC e confirmação dos ACLs de Named Pipe.
 - **#63:** resultado da tentativa concorrente de troca de junction, falhas de permissão, caminhos UNC e log do commit; registre o comportamento observado sem declarar inexistência absoluta de TOCTOU.
 - **#49/#54:** edição real do Windows 7 (comum/Embedded), ferramenta EWF/FBWF efetivamente instalada, estado do filtro antes e depois de reboot, gravação externa e rollback comprovados. Em Windows 7 comum, resultado OS-level do projeto deve permanecer **unsupported**.
-- **#55:** nome e hash do EXE/ZIP/.deb baixados da release v0.1.11, sucesso ou falha de instalação/desinstalação e logs sem segredos.
+- **#55:** nome e hash do EXE/ZIP/.deb baixados da release v0.1.12, sucesso ou falha de instalação/desinstalação e logs sem segredos.
 
 Se o teste não puder ser realizado, anote **não executado** em vez de marcar sucesso. Todos os registros devem referenciar o mesmo SHA do build e a versão do sistema.
 
