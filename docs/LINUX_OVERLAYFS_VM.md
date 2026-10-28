@@ -120,3 +120,11 @@ Isso reduz trocas de caminho por usuarios comuns entre inspecao e
 mount, mas nao protege contra processos maliciosos executando como
 root. O service nao protege a raiz nem intercepta escritas antes
 da sua ativacao no boot. A validacao pos-reboot permanece manual.
+
+### Pacote que inclui a unit de boot opt-in
+
+A unidade `deepfreezer-overlayfs@.service` é distribuída no pacote
+`deepfreezer_0.1.13_all.deb` (confirmar a publicação e os hashes
+`SHA256SUMS` da release v0.1.13 antes de instalar na VM). O pacote
+não habilita a unit. Um boot real com escrita externa e reversão do
+estado ainda deve ser demonstrado conforme as issues #49 e #54.

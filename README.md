@@ -20,7 +20,7 @@ do administrador.
   e validada pelo servidor. A bandeja usa `pystray` e `Pillow`.
 
 > **Nota de versão:** a publicação v0.1.9 contém, por engano,
-> um pacote Debian 0.1.8. Utilize **v0.1.12** ou posterior.
+> um pacote Debian 0.1.8. Utilize **v0.1.13** ou posterior.
 > O Windows 7 ainda requer testes manuais de binário e UAC;
 > Windows 7 comum **não** tem UWF e não deve executar o provisionador VHDX
 > do projeto. O congelamento do núcleo é **application-level**, não
@@ -41,7 +41,7 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
   (`chmod 700`) e a unit do systemd, já com as permissões da Tarefa 2
   aplicadas pelo próprio `postinst`.
   ```
-  sudo dpkg -i deepfreezer_0.1.12_all.deb
+  sudo dpkg -i deepfreezer_0.1.13_all.deb
   sudo systemctl start deepfreezer      # revise /etc/deepfreezer/config.json antes
   sudo apt remove deepfreezer           # remove (preserva config)
   sudo apt purge deepfreezer            # remove tudo
@@ -159,7 +159,7 @@ diretórios autorizados com alterações desviadas para tmpfs. **Não é
 habilitado automaticamente, não protege a raiz do SO** e deve ser
 validado em VM antes do uso. Veja `docs/LINUX_OVERLAYFS_VM.md`.
 
-**Segurança no Windows desde v0.1.12:** `thaw --commit` com
+**Segurança no Windows desde v0.1.13:** `thaw --commit` com
 alterações pendentes **é bloqueado por padrão** porque o teste
 cross-process do [PR #84](https://github.com/c1c3ru/userfreezer/pull/84)
 comprovou renomeação de ancestral apesar dos handles Win32.

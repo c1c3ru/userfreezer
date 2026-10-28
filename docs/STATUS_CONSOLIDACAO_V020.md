@@ -8,14 +8,14 @@ issues [#63](https://github.com/c1c3ru/userfreezer/issues/63),
 [#56](https://github.com/c1c3ru/userfreezer/issues/56). Atualize-o em cada PR
 que altere os critérios de aceite, junto com o comentário na issue.
 
-**Versão pública confirmada:** `v0.1.12`. A `v0.2.0` **não foi
+**Versão-alvo para a nova bateria de testes:** `v0.1.13` (confirmar publicação da tag e hashes antes da validação). A `v0.2.0` **não foi
 publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
 ## Estado por issue
 
 | Issue | Implementado e com CI | Critério ainda pendente |
 | --- | --- | --- |
-| [#63: TOCTOU NT](https://github.com/c1c3ru/userfreezer/issues/63) | PRs #94, #95, #100, #101, #103, #105 e #106: abertura, criação/gravação, mkdir, unlink, rename/replace, rmdir vazio, enumeração e exclusão recursiva experimental, sempre por handles NT relativos. PR #106 integrou **protótipo** de exclusão recursiva por handle com CI aprovado. | Integrar todas as operações ao core sem pathname fallback; raiz confiável, semântica de falha parcial, teste concorrente intensivo com dois processos e evidência Win7 SP1 |
+| [#63: TOCTOU NT](https://github.com/c1c3ru/userfreezer/issues/63) | PRs #94, #95, #100, #101, #103, #105, #106, #108 e #109: abertura, criação/gravação, mkdir, unlink, rename/replace, rmdir vazio, enumeração e exclusão recursiva experimental, sempre por handles NT relativos. PR #106 integrou exclusão recursiva; PR #108 integrou plano NT end-to-end **somente experimental** e PR #109 passou 12 ciclos com dois processos e junction. | Integrar fluxo nativo ao core com raiz confiável e validação ACL/UNC; expandir testes concorrentes e de falha parcial; evidência Win7 SP1 real |
 | [#49: OS-level](https://github.com/c1c3ru/userfreezer/issues/49) | PR #88: gravação externa real interceptada por kernel OverlayFS Linux por diretório; PR #93: estado independente no painel; PR #102: unit systemd opcional, desativada no pacote, com guard de conflito; PR #104: exigir alvo e ancestrais root-owned e não graváveis por terceiros | Reboot e rollback real de VM, exclusões, ativação antes de escritores, estratégia de rootfs/initramfs e filtros Windows verificados |
 | [#54: VM](https://github.com/c1c3ru/userfreezer/issues/54) | PRs #91, #97, #98 e #99: recusa de falso PASS sem reboot, bloqueio VHDX fora do WinPE, verificação de comandos nativos, teste de exclusão persistente com sentinela e comparação de caminhos | Rodar UWF e EWF/FBWF em versões licenciadas e VHDX/WinPE em VMs descartáveis; anexar provas de boot, recuperação e rollback |
 | [#56: UX](https://github.com/c1c3ru/userfreezer/issues/56) | PRs #90 e #96: autostart por usuário, multialvos, overlay customizado, erros ACL, smoke Tk Linux/Xvfb e Windows Python 3.8/3.12, recusa de ações não autorizadas | Sessão GUI Windows 7 SP1, prompt UAC real, fluxos operacionais e capturas/instruções finais na documentação |
