@@ -122,7 +122,7 @@ exige sessão gráfica manual conforme `docs/WIN7_MANUAL_TEST.md`.
 
 ## Teste automatizado gráfico Windows
 
-A suíte de CI Windows executa `test_ui_smoke_windows.py` com uma janela
+A suíte de CI Windows executa `python -m unittest -v ui.smoke_panel_windows` com uma janela
 Tkinter real (oculta no runner), validando seleção de dois alvos,
 `overlay` personalizado, erros ACL, estado OS-level `unverified` e
 bloqueio de commit sem UAC. O teste não usa credenciais nem modifica
