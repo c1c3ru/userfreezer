@@ -105,3 +105,18 @@ desta sessão; **não confunda stop/disable com desmontagem**. Para encerrar
 com segurança, volte a uma VM de manutenção e reinicie. Não habilitar
 em produção até validar reboot, exclusões, rollback e conflito de ordem
 de serviços. A #49 permanece aberta.
+
+
+### Requisito de ownership para boot opt-in (#49)
+
+A unit agora inclui `--require-root-owned-ancestors`, que recusa
+qualquer ancestral ou target que nao seja diretorio real de root,
+ou que seja gravavel por grupo/outros. A excecao e `/tmp` (sticky,
+root-owned), mas a pasta alvo criada **dentro** de `/tmp` deve ser
+root-owned e nao gravavel por terceiros. O teste CI do kernel verifica
+o target descartavel root-owned antes de montar.
+
+Isso reduz trocas de caminho por usuarios comuns entre inspecao e
+mount, mas nao protege contra processos maliciosos executando como
+root. O service nao protege a raiz nem intercepta escritas antes
+da sua ativacao no boot. A validacao pos-reboot permanece manual.
