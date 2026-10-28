@@ -80,6 +80,13 @@ jobs:
           "
           sudo mkdir -p /tmp/df-ci-target
           sudo python3 -B /opt/deepfreezer/deepfreezerd.py --config /etc/deepfreezer/config.json -v
+          sudo python3 -c "
+          import json
+          r=json.load(open('/var/lib/deepfreezer/status.json', encoding='utf-8'))
+          assert r['state']=='healthy', r
+          assert r['protection_scope']=='application-level', r
+          assert r['successful_targets']==1, r
+          "
           sudo dpkg -P deepfreezer
           test ! -d /opt/deepfreezer
           test ! -d /etc/deepfreezer
@@ -284,6 +291,13 @@ jobs:
           }
           if (-not (Test-Path "C:\df-ci-target.dfreezer")) {
               throw "overlay C:\df-ci-target.dfreezer nao foi criado -- enforcement nao rodou de verdade"
+          }
+          # Running nao garante que todos os alvos foram aplicados.
+          $healthPath = "C:\ProgramData\DeepFreezer\status.json"
+          if (-not (Test-Path $healthPath)) { throw "status de enforcement nao publicado" }
+          $health = Get-Content $healthPath -Raw | ConvertFrom-Json
+          if ($health.state -ne "healthy" -or $health.successful_targets -ne 1 -or $health.protection_scope -ne "application-level") {
+              throw "servico Running com estado de enforcement inesperado"
           }
           Write-Host "--- ACL do overlay (icacls) ---"
           icacls "C:\df-ci-target.dfreezer"
