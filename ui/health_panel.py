@@ -145,6 +145,15 @@ class AdminPanel(object):
         return entry["target"] if entry else None
 
     def action(self, operation):
+        if operation == "commit" and os.name == "nt":
+            messagebox.showerror(
+                "Commit indisponivel no Windows",
+                "Operacao bloqueada pelo core por seguranca (#63). "
+                "Um teste mostrou troca concorrente de diretorios mesmo "
+                "com handles Win32 abertos. Descarte alteracoes ou "
+                "aguarde o backend com commit seguro.",
+                parent=self.root)
+            return
         target = self.selected_target()
         if not target:
             messagebox.showwarning("DeepFreezer", "Selecione um alvo primeiro.",
