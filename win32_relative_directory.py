@@ -18,7 +18,9 @@ import os
 FILE_READ_ATTRIBUTES = 0x80
 FILE_TRAVERSE = 0x20
 FILE_ADD_FILE = 0x2
+FILE_ADD_SUBDIRECTORY = 0x4
 FILE_WRITE_DATA = 0x2
+DELETE = 0x10000
 SYNCHRONIZE = 0x100000
 FILE_SHARE_READ = 0x1
 FILE_SHARE_WRITE = 0x2
@@ -26,6 +28,7 @@ FILE_SHARE_DELETE = 0x4
 OPEN_EXISTING = 3
 FILE_OPEN = 1
 FILE_CREATE = 2
+FILE_DISPOSITION_INFO_CLASS = 4
 FILE_NON_DIRECTORY_FILE = 0x40
 FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
@@ -57,6 +60,10 @@ class _IO_STATUS_BLOCK(ctypes.Structure):
     _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_size_t)]
 
 
+class _FILE_DISPOSITION_INFO(ctypes.Structure):
+    _fields_ = [("DeleteFile", wintypes.BOOL)]
+
+
 class _BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
     _fields_ = [
         ("dwFileAttributes", wintypes.DWORD),
@@ -81,6 +88,9 @@ def _dlls():
         wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
         wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
     kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.SetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    kernel.SetFileInformationByHandle.restype = wintypes.BOOL
     kernel.WriteFile.argtypes = [wintypes.HANDLE, wintypes.LPCVOID,
                                  wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
                                  wintypes.LPVOID]
@@ -129,7 +139,8 @@ def open_trusted_root(root):
     if not os.path.isabs(root):
         raise ValueError("raiz precisa ser absoluta")
     handle = kernel.CreateFileW(
-        root, FILE_TRAVERSE | FILE_ADD_FILE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        root, FILE_TRAVERSE | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY |
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         None, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
@@ -158,7 +169,8 @@ def open_relative_directory(parent, name):
     handle = wintypes.HANDLE()
     status = nt.NtCreateFile(
         ctypes.byref(handle),
-        FILE_READ_ATTRIBUTES | FILE_ADD_FILE | FILE_TRAVERSE | SYNCHRONIZE,
+        FILE_READ_ATTRIBUTES | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY |
+        FILE_TRAVERSE | SYNCHRONIZE,
         ctypes.byref(attrs), ctypes.byref(io), None, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         FILE_OPEN,
@@ -229,5 +241,84 @@ def create_relative_file(parent, name, data):
         if not kernel.FlushFileBuffers(handle):
             raise ctypes.WinError()
         return position
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def create_relative_directory(parent, name):
+    """EXPERIMENTAL: mkdir no objeto pai, jamais reconstruindo pathname.
+
+    FILE_CREATE recusa se o nome ja existe: sem seguir links/junctions.
+    Retorna identidade do novo diretorio, validada por handle.
+    Nao integrada a _commit_windows ate operacoes restantes seguras.
+    """
+    _validate_component(name)
+    kernel, nt = _dlls()
+    name_buffer = ctypes.create_unicode_buffer(name)
+    count = len(name.encode("utf-16-le"))
+    uni = _UNICODE_STRING(count, count, ctypes.cast(name_buffer, wintypes.LPWSTR))
+    attrs = _OBJECT_ATTRIBUTES(
+        ctypes.sizeof(_OBJECT_ATTRIBUTES), parent, ctypes.pointer(uni),
+        OBJ_CASE_INSENSITIVE, None, None)
+    io = _IO_STATUS_BLOCK()
+    handle = wintypes.HANDLE()
+    status = nt.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_READ_ATTRIBUTES | FILE_TRAVERSE | FILE_ADD_FILE |
+        FILE_ADD_SUBDIRECTORY | SYNCHRONIZE,
+        ctypes.byref(attrs), ctypes.byref(io), None, FILE_ATTRIBUTE_DIRECTORY,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_CREATE,
+        FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT |
+        FILE_SYNCHRONOUS_IO_NONALERT,
+        None, 0)
+    if status < 0:
+        raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+    try:
+        return _check_directory(kernel, handle)
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def delete_relative_file(parent, name):
+    """EXPERIMENTAL: unlink por HANDLE do arquivo, nunca por caminho.
+
+    Rejeita diretórios e reparse points, inclusive symlinks/junctions.
+    FileDispositionInfo suportado no Windows 7; arquivo deve nao estar
+    aberto com compartilhamento incompatível. Sem suporte a rmtree.
+    """
+    _validate_component(name)
+    kernel, nt = _dlls()
+    name_buffer = ctypes.create_unicode_buffer(name)
+    count = len(name.encode("utf-16-le"))
+    uni = _UNICODE_STRING(count, count, ctypes.cast(name_buffer, wintypes.LPWSTR))
+    attrs = _OBJECT_ATTRIBUTES(
+        ctypes.sizeof(_OBJECT_ATTRIBUTES), parent, ctypes.pointer(uni),
+        OBJ_CASE_INSENSITIVE, None, None)
+    io = _IO_STATUS_BLOCK()
+    handle = wintypes.HANDLE()
+    status = nt.NtCreateFile(
+        ctypes.byref(handle),
+        DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        ctypes.byref(attrs), ctypes.byref(io), None, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT |
+        FILE_SYNCHRONOUS_IO_NONALERT,
+        None, 0)
+    if status < 0:
+        raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+    try:
+        info = _BY_HANDLE_FILE_INFORMATION()
+        if not kernel.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            raise ctypes.WinError()
+        if info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
+                                   FILE_ATTRIBUTE_REPARSE_POINT):
+            raise OSError("delete recusado: diretorio ou reparse point")
+        disposition = _FILE_DISPOSITION_INFO(True)
+        if not kernel.SetFileInformationByHandle(
+                handle, FILE_DISPOSITION_INFO_CLASS,
+                ctypes.byref(disposition), ctypes.sizeof(disposition)):
+            raise ctypes.WinError()
     finally:
         kernel.CloseHandle(handle)
