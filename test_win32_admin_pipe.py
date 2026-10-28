@@ -82,6 +82,34 @@ class WindowsPipeIntegrationTests(unittest.TestCase):
                 self.assertEqual(a["result"]["scope"], "application-level")
                 b = ipc.request_windows()
                 self.assertTrue(b.get("ok"), b)
+
+                # Teste real de autorizacao com token Windows restrito:
+                # nao basta usar is_admin=False em mock do Broker.
+                # O proprio kernel deve encaminhar o token sem SID de
+                # Administradores para o named pipe privilegiado.
+                import win32api
+                import win32security as sec
+                admin_sid = sec.CreateWellKnownSid(
+                    sec.WinBuiltinAdministratorsSid, None)
+                ptok = sec.OpenProcessToken(
+                    win32api.GetCurrentProcess(),
+                    win32con.TOKEN_DUPLICATE | win32con.TOKEN_QUERY |
+                    win32con.TOKEN_IMPERSONATE)
+                restricted = sec.CreateRestrictedToken(
+                    ptok, 0, [(admin_sid, 0)], [], [])
+                try:
+                    sec.ImpersonateLoggedOnUser(restricted)
+                    try:
+                        denied = ipc.request_windows("freeze", root)
+                    finally:
+                        sec.RevertToSelf()
+                finally:
+                    restricted.Close()
+                    ptok.Close()
+                self.assertFalse(denied.get("ok"), denied)
+                self.assertEqual(
+                    denied["error"]["code"], "PermissionError", denied)
+                self.assertFalse(os.path.exists(root + ".dfreezer"))
             finally:
                 stop.set()
                 try:
