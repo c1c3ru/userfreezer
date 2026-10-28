@@ -92,3 +92,15 @@ API estiver `healthy`. Essa consulta não altera volumes nem ativa filtros.
 O teste real de kernel na CI verifica `active` durante o OverlayFS e
 `inactive` depois do `umount`. Essas observações não substituem a
 matriz de VM da #54 nem representam proteção da raiz do Linux.
+
+## Salvaguardas do reset VHDX (sem validacao de VM)
+
+A partir da correção para #54, `vhdx_diff_reset.ps1` é **dry-run por
+padrão**. Para executar exige `-IAcceptTheRisk`, presença do registro
+MiniNT de WinPE/WinRE, privilégios elevados e letra ESP validada.
+Um teste negativo no runner Windows verifica que o dry-run e a tentativa
+fora de WinPE **não alteram nem excluem** um `diff.vhdx` de prova.
+`vhdx_diff_setup.ps1` passa a interromper operações após códigos de
+saída não-zero de DISM, bcdboot e attrib. Estas medidas **não provam**
+recuperação em boot real; é obrigatório snapshot externo e executar o
+plano da #54 antes de usar em uma máquina não descartável.
