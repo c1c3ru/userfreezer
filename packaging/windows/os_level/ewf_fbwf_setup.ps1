@@ -41,6 +41,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# PowerShell 2.0 compativel: erro de executavel nativo NAO dispara
+# excecao com ErrorActionPreference=Stop. Verificar LASTEXITCODE.
+function Invoke-NativeChecked {
+    param([Parameter(Mandatory = $true)][string]$Executable,
+          [string[]]$Arguments = @())
+    & $Executable @Arguments
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        throw ("Falha no comando " + $Executable + " (" +
+            ($Arguments -join " ") + "), ExitCode=" + $code)
+    }
+}
+
+
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($id)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -71,7 +85,7 @@ Write-Host "filtro detectado: $filtro"
 
 if ($Status) {
     if ($filtro -eq "ewf") {
-        & ewfmgr.exe c:
+        Invoke-NativeChecked "ewfmgr.exe" @("c:")
     } else {
         Write-Host "fbwfmgr nao tem um subcomando de status confirmado neste script -- rode 'fbwfmgr /?' na maquina para ver as opcoes exatas desta imagem"
     }
@@ -81,10 +95,10 @@ if ($Status) {
 if ($Protect) {
     if ($filtro -eq "ewf") {
         Write-Host "protegendo $Protect via EWF (so' entra em vigor com -Enable + reboot)..."
-        & ewfmgr.exe $Protect -enable
+        Invoke-NativeChecked "ewfmgr.exe" @($Protect, "-enable")
     } else {
         Write-Host "adicionando $Protect a protecao FBWF (so' entra em vigor com -Enable + reboot)..."
-        & fbwfmgr.exe /addvolume $Protect
+        Invoke-NativeChecked "fbwfmgr.exe" @("/addvolume", $Protect)
     }
     Write-Host "marcado. rode -Enable e reinicie pra ativar de verdade."
     exit 0
@@ -103,7 +117,7 @@ if ($Exclude) {
     $volume = (Split-Path -Qualifier $Exclude)
     $relativo = $Exclude.Substring($volume.Length)
     Write-Host "excluindo $Exclude da protecao FBWF (persiste entre reboots)..."
-    & fbwfmgr.exe /addexclusion $volume $relativo
+    Invoke-NativeChecked "fbwfmgr.exe" @("/addexclusion", $volume, $relativo)
     exit 0
 }
 
@@ -113,9 +127,9 @@ if ($Enable) {
         "descartada no boot seguinte. Se algo der errado, rode -Disable e " +
         "reinicie de novo para reverter.") -ForegroundColor Yellow
     if ($filtro -eq "ewf") {
-        & ewfmgr.exe -all -enable
+        Invoke-NativeChecked "ewfmgr.exe" @("-all", "-enable")
     } else {
-        & fbwfmgr.exe /enable
+        Invoke-NativeChecked "fbwfmgr.exe" @("/enable")
     }
     Write-Host "ativado para a proxima sessao. reinicie a maquina para entrar em vigor."
     exit 0
@@ -124,9 +138,9 @@ if ($Enable) {
 if ($Disable) {
     Write-Host "desativando o filtro para a proxima sessao (saida de emergencia)..."
     if ($filtro -eq "ewf") {
-        & ewfmgr.exe -all -disable
+        Invoke-NativeChecked "ewfmgr.exe" @("-all", "-disable")
     } else {
-        & fbwfmgr.exe /disable
+        Invoke-NativeChecked "fbwfmgr.exe" @("/disable")
     }
     Write-Host "desativado para a proxima sessao. reinicie a maquina para entrar em vigor."
     exit 0
