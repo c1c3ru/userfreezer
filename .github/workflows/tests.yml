@@ -64,6 +64,10 @@ jobs:
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/os_level/test_vm_probe_no_reboot.ps1
+      - name: Bloquear VHDX reset fora de WinPE sem modificar discos
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/os_level/test_vhdx_safety_dryrun.ps1
 
 
   linux-kernel-overlayfs:
