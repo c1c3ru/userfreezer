@@ -7,16 +7,18 @@ Nenhuma senha/credencial e enviada pela UI ou aceita neste protocolo.
 """
 import json
 import os
+import secrets
 import socket
 import struct
 import threading
+import time
 import uuid
 
 from deepfreezer import DeepFreezer, DeepFreezeError
 
 MAX_BYTES = 16384
-ACTIONS = ("status", "freeze", "discard", "commit")
-MUTATIONS = ("freeze", "discard", "commit")
+ACTIONS = ("status", "prepare", "freeze", "discard", "commit")
+MUTATIONS = ("prepare", "freeze", "discard", "commit")
 
 
 class ProtocolError(ValueError):
@@ -41,7 +43,7 @@ def decode_message(raw):
         raise ProtocolError("JSON invalido: %s" % exc)
     if not isinstance(obj, dict) or obj.get("v") != 1:
         raise ProtocolError("versao do protocolo nao suportada")
-    allowed = {"v", "id", "action", "target", "confirm"}
+    allowed = {"v", "id", "action", "target", "confirm", "operation"}
     if set(obj) - allowed:
         raise ProtocolError("campos desconhecidos")
     try:
@@ -65,8 +67,11 @@ def load_targets(config_path):
     for entry in targets:
         if not isinstance(entry, dict) or not isinstance(entry.get("target"), str):
             raise ProtocolError("config: entrada de alvo invalida")
-        name = os.path.abspath(os.path.expanduser(entry["target"]))
-        if name in result or not name:
+        raw = entry["target"]
+        if not raw.strip() or not os.path.isabs(raw):
+            raise ProtocolError("config: alvo precisa ser caminho absoluto")
+        name = os.path.abspath(os.path.expanduser(raw))
+        if name in result:
             raise ProtocolError("config: alvo repetido ou vazio")
         result[name] = {
             "target": name,
@@ -84,6 +89,7 @@ class Broker(object):
         self.status_path = status_path
         self.audit = audit
         self._mutex = threading.RLock()
+        self._pending = {}  # nonce -> (peer, acao, alvo, expira no monotonic)
 
     def _audit(self, ident, obj, ok, message):
         if self.audit:
@@ -126,10 +132,32 @@ class Broker(object):
                     target = obj.get("target")
                     if not isinstance(target, str) or target not in targets:
                         raise PermissionError("alvo nao configurado")
+                    # Nonces de curta duracao, vinculados ao token do peer:
+                    # nao ha replay de confirmacoes entre processos.
+                    now = time.monotonic()
+                    self._pending = {
+                        tok: value for tok, value in self._pending.items()
+                        if value[3] > now
+                    }
+                    if obj["action"] == "prepare":
+                        operation = obj.get("operation")
+                        if operation not in ("discard", "commit"):
+                            raise ProtocolError("operacao de preparo invalida")
+                        if len(self._pending) >= 128:
+                            raise ProtocolError("muitas autorizacoes pendentes")
+                        token = secrets.token_urlsafe(24)
+                        self._pending[token] = (identity, operation, target, now + 30)
+                        result = {"token": token, "operation": operation,
+                                  "target": target, "expires_in": 30}
+                        self._audit(identity, obj, True, "nonce criado")
+                        return {"v": 1, "id": obj["id"], "ok": True, "result": result}
                     if obj["action"] in ("discard", "commit"):
-                        expected = "%s %s" % (obj["action"].upper(), target)
-                        if obj.get("confirm") != expected:
-                            raise ProtocolError("confirmacao explicita obrigatoria")
+                        token = obj.get("confirm")
+                        if not isinstance(token, str):
+                            raise ProtocolError("nonce de confirmacao ausente")
+                        prepared = self._pending.pop(token, None)
+                        if prepared != (identity, obj["action"], target, prepared[3] if prepared else None):
+                            raise PermissionError("confirmacao expirada ou de outro peer")
                     cfg = targets[target]
                     with DeepFreezer(target, overlay=cfg["overlay"],
                                      verify=cfg["verify"]) as df:
@@ -194,7 +222,18 @@ def serve_unix(broker, path, stop_event=None):
     directory = os.path.dirname(path)
     os.makedirs(directory, mode=0o755, exist_ok=True)
     if os.path.lexists(path):
-        raise RuntimeError("socket ja existe; nao remover socket alheio")
+        if not stat_is_socket(path) or os.lstat(path).st_uid != os.geteuid():
+            raise RuntimeError("socket antigo inseguro ou de outro proprietario")
+        # Restos de crash sao recuperados apenas dentro de runtime dir
+        # controlado. Nunca apagar socket de servidor respondendo.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.5)
+            try:
+                probe.connect(path)
+            except ConnectionRefusedError:
+                os.unlink(path)
+            else:
+                raise RuntimeError("servidor IPC ja ativo")
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         server.bind(path)
@@ -224,7 +263,7 @@ def serve_unix(broker, path, stop_event=None):
                         pass
     finally:
         server.close()
-        if os.path.exists(path) and stat_is_socket(path):
+        if os.path.lexists(path) and stat_is_socket(path):
             os.unlink(path)
 
 
@@ -233,12 +272,15 @@ def stat_is_socket(path):
     return stat.S_ISSOCK(os.lstat(path).st_mode)
 
 
-def request_unix(path, action="status", target=None, confirm=None, timeout=5):
+def request_unix(path, action="status", target=None, confirm=None,
+                 operation=None, timeout=5):
     obj = {"v": 1, "id": str(uuid.uuid4()), "action": action}
     if target is not None:
         obj["target"] = target
     if confirm is not None:
         obj["confirm"] = confirm
+    if operation is not None:
+        obj["operation"] = operation
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
         conn.settimeout(timeout)
         conn.connect(path)
