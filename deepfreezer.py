@@ -273,9 +273,9 @@ class DeepFreezer(object):
 
     def _commit_parts(self, rel):
         """Rejeita caminhos ambiguos e rotas que podem sair do alvo."""
-        if not isinstance(rel, str) or not rel or "\\x00" in rel:
+        if not isinstance(rel, str) or not rel or "\x00" in rel:
             raise DeepFreezeError("caminho de commit invalido")
-        path = rel.replace("\\\\", "/")
+        path = rel.replace("\\", "/")
         if path.startswith("/") or ntpath.splitdrive(path)[0]:
             raise DeepFreezeError("caminho absoluto nao permitido no commit")
         parts = path.split("/")
