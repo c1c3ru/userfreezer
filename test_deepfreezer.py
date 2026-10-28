@@ -398,6 +398,22 @@ class ThawDiscardTests(BaseCase):
         self.assertFalse(os.path.lexists(overlay))
         self.assertFalse(os.path.exists(overlay + ".discarding"))
 
+    def test_commit_falhou_nao_inicia_descarte(self):
+        """Erro de commit nao deve descartar mudancas nem marcar overlay."""
+        df = self.frozen_df()
+        df.write("a.txt", b"nova-versao")
+
+        def falhar_commit():
+            raise DeepFreezeError("commit simulado falhou")
+
+        df._apply_commit = falhar_commit
+        with self.assertRaises(DeepFreezeError):
+            df.thaw(commit=True)
+        self.assertTrue(df.frozen)
+        self.assertEqual(df.read("a.txt"), b"nova-versao")
+        self.assertTrue(os.path.isdir(df.overlay))
+        self.assertFalse(os.path.exists(df.overlay + ".discarding"))
+
     def test_pode_reexecutar_thaw_apos_falha_de_limpeza(self):
         import deepfreezer as dfmod
         df = self.frozen_df()
