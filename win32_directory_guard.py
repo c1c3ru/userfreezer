@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Bloqueio de ancestrais por HANDLE, Windows 7+ (stdlib ctypes).
+"""Verificacao de reparse points por HANDLE, Windows 7+ (stdlib ctypes).
 
-CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
-abre cada diretorio sem seguir o ultimo componente; sem FILE_SHARE_DELETE,
-o Windows impede rename/delete do diretorio enquanto o handle existir.
-Isso fecha a janela check-then-use dos ANCESTRAIS do commit. Filhos que
-surgem no intervalo sao verificados da mesma forma antes do uso.
+ATENCAO: aberturas via CreateFileW/FILE_FLAG_OPEN_REPARSE_POINT nao
+garantem que outro processo nao consiga renomear um ancestral enquanto
+o handle permanece aberto. O teste de dois processos do PR #84 observou
+rename permitido no runner Windows. Portanto, este modulo NAO fornece
+garantia completa contra TOCTOU: commit Windows sob adversario capaz
+de alterar a arvore simultaneamente e' inseguro ate a #63 ser resolvida.
 """
 import contextlib
 import ctypes
@@ -84,8 +85,8 @@ def guarded_parent(root, parts, create=False):
     """Mantem abertos TODOS os ancestrais ate o fim da mutacao.
 
     O caller valida os componentes (sem '..', drive, ADS etc.) ANTES.
-    Em Windows 7 NTFS, handles sem FILE_SHARE_DELETE impedem troca de
-    diretorios por junction entre verificacao e escrita.
+    Os handles permitem examinar o objeto aberto e verificar reparse;
+    nao garantem bloqueio contra toda troca concorrente de diretores.
     """
     target = ntpath.abspath(root)
     drive, tail = ntpath.splitdrive(target)

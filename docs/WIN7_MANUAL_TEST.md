@@ -1,10 +1,17 @@
 # Roteiro de validação manual do Win7 e de proteção OS-level
 
-> **Binários válidos para validar:** [v0.1.10](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.10). A v0.1.9 tem Debian com versão interna 0.1.8 e não deve ser utilizada como prova de integridade da release. Registre o SHA-256 local do EXE Win7 e compare com `SHA256SUMS` da release antes de executar. Os testes só são considerados concluídos com logs e evidências anexadas pelo mantenedor.
+> **Binários válidos para validar:** [v0.1.11](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.11). A v0.1.9 tem Debian com versão interna 0.1.8 e não deve ser utilizada como prova de integridade da release. Registre o SHA-256 local do EXE Win7 e compare com `SHA256SUMS` da release antes de executar. Os testes só são considerados concluídos com logs e evidências anexadas pelo mantenedor.
 
 **Aplicável ao código da branch que contém as issues #49/#54.**
 Não execute scripts que modificam boot ou partições em máquina de produção.
 Sem logs e evidências externas, as issues #49/#54 **não podem ser declaradas concluídas**.
+
+> **Limitação conhecida do commit Windows (#63):** teste com processo concorrente
+> conseguiu renomear diretorio ancestral mesmo quando estava aberto com handle
+> nativo sem FILE_SHARE_DELETE. Nao execute commit em ambiente onde outro
+> processo nao confiavel pode modificar caminhos ao mesmo tempo. No roteiro,
+> registre o resultado de concorrencia e nao presuma bloqueio de junctions
+> a partir apenas de um `commit` bem-sucedido.
 
 ## 1. Preparação comum (antes de modificar qualquer filtro)
 
@@ -159,6 +166,6 @@ Após os ensaios, anexe em cada issue correspondente:
 - **#53/#56:** screenshot do painel, resultado dos comandos autorizados e negados, conta utilizada (usuário comum ou admin, sem dados pessoais), teste de UAC e confirmação dos ACLs de Named Pipe.
 - **#63:** resultado da tentativa concorrente de troca de junction, falhas de permissão, caminhos UNC e log do commit; registre o comportamento observado sem declarar inexistência absoluta de TOCTOU.
 - **#49/#54:** edição real do Windows 7 (comum/Embedded), ferramenta EWF/FBWF efetivamente instalada, estado do filtro antes e depois de reboot, gravação externa e rollback comprovados. Em Windows 7 comum, resultado OS-level do projeto deve permanecer **unsupported**.
-- **#55:** nome e hash do EXE/ZIP/.deb baixados da release v0.1.10, sucesso ou falha de instalação/desinstalação e logs sem segredos.
+- **#55:** nome e hash do EXE/ZIP/.deb baixados da release v0.1.11, sucesso ou falha de instalação/desinstalação e logs sem segredos.
 
 Se o teste não puder ser realizado, anote **não executado** em vez de marcar sucesso. Todos os registros devem referenciar o mesmo SHA do build e a versão do sistema.
