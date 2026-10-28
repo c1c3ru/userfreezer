@@ -16,6 +16,7 @@ Uso: python3 test_deepfreezer.py
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -356,8 +357,8 @@ class ThawDiscardTests(BaseCase):
 
         self.assertFalse(visto["fd_aberto"],
                          "LOCK ainda aberto no rmtree: quebra no Windows")
-        self.assertFalse(visto["lock_em_disco"],
-                         "LOCK ainda em disco no rmtree: quebra no Windows")
+        self.assertTrue(visto["lock_em_disco"],
+                        "LOCK deve persistir entre releases, ate a remocao do overlay")
         self.assertFalse(os.path.exists(df.overlay))
 
     def test_thaw_sem_freeze_e_erro(self):
@@ -557,6 +558,21 @@ class JournalRecoveryTests(BaseCase):
         os.remove(os.path.join(overlay, "manifest.json"))
         with self.assertRaises(DeepFreezeError):
             DeepFreezer(self.target)
+
+    def test_lock_recente_de_processo_encerrado_abruptamente(self):
+        """Lock do SO deve ser liberado imediatamente se o filho morrer."""
+        df = self.frozen_df()
+        df.close()
+        script = (
+            "import os, sys; sys.path.insert(0, %r); "
+            "from deepfreezer import DeepFreezer; "
+            "df = DeepFreezer(%r); os._exit(0)"
+        ) % (os.path.dirname(os.path.abspath(__file__)), self.target)
+        subprocess.check_call([sys.executable, "-c", script])
+        # O LOCK persiste em disco, mas nao esta mais adquirido.
+        self.assertTrue(os.path.isfile(os.path.join(df.overlay, "LOCK")))
+        reaberto = self.open_df(lock_timeout=0.2)
+        self.assertTrue(reaberto.frozen)
 
     def test_lock_remanescente_de_um_crash_nao_trava_para_sempre(self):
         df = self.frozen_df()
