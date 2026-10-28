@@ -30,8 +30,10 @@ a tag anterior**. Não use `deepfreezer_0.1.8_all.deb` anunciado como v0.1.9.
   exportação de diagnóstico e confirmações explícitas. A elevação
   ocorre por UAC ou polkit, sem tornar a janela inteira privilegiada.
 - **#49/#54:** ferramentas de inspeção e roteiro manual para testar
-  writes externos e rollback em VM, verificação de falhas nativas de
-  UWF/EWF/FBWF. **Windows 7 comum não recebe suporte VHDX automático**;
+  escritas externas e rollback em VM, verificação de falhas nativas de
+  UWF/EWF/FBWF. Também há um **modo opcional Linux baseado no OverlayFS
+  do kernel**, limitado a diretórios de teste, com upperdir em tmpfs,
+  sem ativação automática. **Windows 7 comum não recebe suporte VHDX**;
   somente edições Embedded com filtro existente podem receber EWF/FBWF.
 - **#55:** builds versionados verificam testes Windows/Linux (Python
   3.8/3.12), geração de pacote Debian, executáveis distintos Windows,
