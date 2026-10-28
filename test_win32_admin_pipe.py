@@ -46,6 +46,16 @@ class WindowsPipeIntegrationTests(unittest.TestCase):
             thread.daemon = True
             thread.start()
             try:
+                # Probe de status pode conectar e fechar sem enviar JSON;
+                # isso nao deve matar a thread do servico.
+                import win32file
+                import win32con
+                win32pipe.WaitNamedPipe(ipc.PIPE_NAME, 5000)
+                probe = win32file.CreateFile(
+                    ipc.PIPE_NAME, win32con.GENERIC_READ | win32con.GENERIC_WRITE,
+                    0, None, win32con.OPEN_EXISTING, 0, None)
+                win32file.CloseHandle(probe)
+                time.sleep(0.1)
                 # A primeira chamada testa autenticação por token após
                 # ReadFile. A segunda exige reutilizacao do handle seguro.
                 for attempt in range(20):
