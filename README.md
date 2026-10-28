@@ -20,7 +20,7 @@ do administrador.
   e validada pelo servidor. A bandeja usa `pystray` e `Pillow`.
 
 > **Nota de versão:** a publicação v0.1.9 contém, por engano,
-> um pacote Debian 0.1.8. Utilize **v0.1.10** ou posterior.
+> um pacote Debian 0.1.8. Utilize **v0.1.12** ou posterior.
 > O Windows 7 ainda requer testes manuais de binário e UAC;
 > Windows 7 comum **não** tem UWF e não deve executar o provisionador VHDX
 > do projeto. O congelamento do núcleo é **application-level**, não
@@ -37,7 +37,7 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
   (`chmod 700`) e a unit do systemd, já com as permissões da Tarefa 2
   aplicadas pelo próprio `postinst`.
   ```
-  sudo dpkg -i deepfreezer_0.1.10_all.deb
+  sudo dpkg -i deepfreezer_0.1.12_all.deb
   sudo systemctl start deepfreezer      # revise /etc/deepfreezer/config.json antes
   sudo apt remove deepfreezer           # remove (preserva config)
   sudo apt purge deepfreezer            # remove tudo
@@ -133,7 +133,7 @@ python3 deepfreezer.py rm     /caminho/app arq_ou_dir
 python3 deepfreezer.py diff   /caminho/app
 python3 deepfreezer.py status /caminho/app
 python3 deepfreezer.py thaw   /caminho/app            # volta ao congelado (descarta)
-python3 deepfreezer.py thaw   /caminho/app --commit    # aplica as mudanças no alvo
+python3 deepfreezer.py thaw   /caminho/app --commit    # Linux: aplica mudancas; Windows: bloqueado por seguranca (#63)
 ```
 
 ## Core: uso como biblioteca
@@ -155,16 +155,14 @@ diretórios autorizados com alterações desviadas para tmpfs. **Não é
 habilitado automaticamente, não protege a raiz do SO** e deve ser
 validado em VM antes do uso. Veja `docs/LINUX_OVERLAYFS_VM.md`.
 
-**Aviso de segurança (v0.1.11):** a implementação Win32 atual **não
-garante isolamento contra troca concorrente de diretórios** durante
-`thaw --commit`. O teste cross-process do
-[PR #84](https://github.com/c1c3ru/userfreezer/pull/84)
-demonstrou uma renomeação não bloqueada no runner Windows.
-Evite commits quando processos não confiáveis puderem alterar
-simultaneamente a árvore e consulte a
-[issue #63](https://github.com/c1c3ru/userfreezer/issues/63)
-para o estado da correção. Isso não afeta a afirmação de que o núcleo
-é apenas *application-level*.
+**Segurança no Windows desde v0.1.12:** `thaw --commit` com
+alterações pendentes **é bloqueado por padrão** porque o teste
+cross-process do [PR #84](https://github.com/c1c3ru/userfreezer/pull/84)
+comprovou renomeação de ancestral apesar dos handles Win32.
+O bloqueio falha antes de modificar o disco e preserva o overlay;
+`thaw` sem `--commit` continua descartando alterações.
+O commit Windows só poderá voltar após um backend seguro e os
+testes da [#63](https://github.com/c1c3ru/userfreezer/issues/63).
 
 **Limite honesto:** o freezer é *application-level* — protege a árvore
 contra mudanças feitas por quem passa pela API/CLI. Um `sed -i`
@@ -181,7 +179,7 @@ Roda o core como serviço a nível de SO: no start (tipicamente no
 boot), para cada diretório configurado descarta o overlay da sessão
 anterior (thaw sem commit) e recongela — todo o resto é o mesmo core
 acima, chamado pelo administrador via CLI quando quiser algo diferente
-do ciclo automático (ex.: `thaw --commit` para aplicar mudanças
+do ciclo automático (no Linux, ex.: `thaw --commit` para aplicar mudanças
 permanentemente antes do próximo boot).
 
 Configuração (`packaging/config.example.json`, copiado durante a
