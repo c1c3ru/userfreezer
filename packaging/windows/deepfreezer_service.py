@@ -341,6 +341,11 @@ def _dispatch_or_explain():
 
 
 def main():
+    # Cli local autenticado. Quando PyInstaller --noconsole nao existe
+    # stdout; a UAC/GUI consulta o ExitCodeProcess (0=sucesso).
+    if len(sys.argv) > 1 and sys.argv[1] == "--admin-cli":
+        from admin_client import main as client_main
+        return client_main(sys.argv[2:])
     if not _HAVE_PYWIN32:
         if "--foreground" not in sys.argv:
             sys.stderr.write(
