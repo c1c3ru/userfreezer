@@ -15,6 +15,7 @@ import time
 import uuid
 
 from deepfreezer import DeepFreezer, DeepFreezeError
+from os_level_status import probe_target
 
 MAX_BYTES = 16384
 ACTIONS = ("status", "prepare", "freeze", "discard", "commit")
@@ -149,6 +150,9 @@ class Broker(object):
                             "state": x.get("state", "error"),
                             "error": x.get("error", ""),
                             "baseline_paths": x.get("baseline_paths", 0),
+                            # Escopo do kernel e independente de healthy
+                            # (que mede apenas a API DeepFreezer).
+                            "os_level": probe_target(key),
                         }
                         # Snapshot atual apenas da API. Erro de lock ou
                         # manifesto nao e' silenciosamente healthy.
