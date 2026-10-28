@@ -180,12 +180,18 @@ assign letter=W
 # -- 4: aplica a imagem do Windows dentro do base.vhdx -----------------
 Write-Host "aplicando $ImageFile (indice $ImageIndex) em W:\ ..."
 & Dism.exe /Apply-Image /ImageFile:"$ImageFile" /Index:$ImageIndex /ApplyDir:"W:\"
+if ($LASTEXITCODE -ne 0) {
+    throw "DISM Apply-Image falhou ExitCode=$LASTEXITCODE; interrompido sem prosseguir com boot"
+}
 
 # -- 6a: configura o boot ainda contra o base.vhdx, soh pra gerar os --
 #        arquivos de boot no ESP -- o BCD sera repontado pro diff.vhdx
 #        no passo seguinte, depois que ele existir.
 Write-Host "gravando arquivos de boot iniciais (ESP em S:)..."
 & bcdboot.exe W:\Windows /s S: /f UEFI
+if ($LASTEXITCODE -ne 0) {
+    throw "bcdboot falhou ExitCode=$LASTEXITCODE; interrompido antes de prosseguir"
+}
 
 # desanexa o base.vhdx e marca como somente-leitura em disco
 Invoke-Diskpart @"
@@ -193,6 +199,9 @@ select vdisk file="$BasePath"
 detach vdisk
 "@
 attrib +R $BasePath
+if ($LASTEXITCODE -ne 0) {
+    throw "attrib +R falhou ExitCode=$LASTEXITCODE; nao inicializar diferencial"
+}
 
 # -- 5: cria o diferencial a partir do base -----------------------------
 Write-Host "criando diff.vhdx (filho de base.vhdx)..."
@@ -206,6 +215,9 @@ assign letter=W
 # -- 6b: reaponta o boot pro diff.vhdx (e' o que vai bootar de fato) --
 Write-Host "repontando o boot para diff.vhdx..."
 & bcdboot.exe W:\Windows /s S: /f UEFI
+if ($LASTEXITCODE -ne 0) {
+    throw "bcdboot falhou ExitCode=$LASTEXITCODE; interrompido antes de prosseguir"
+}
 
 Invoke-Diskpart @"
 select vdisk file="$DiffPath"
