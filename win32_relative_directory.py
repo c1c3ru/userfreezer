@@ -29,6 +29,7 @@ OPEN_EXISTING = 3
 FILE_OPEN = 1
 FILE_CREATE = 2
 FILE_DISPOSITION_INFO_CLASS = 4
+FILE_RENAME_INFORMATION_CLASS = 10
 FILE_NON_DIRECTORY_FILE = 0x40
 FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
@@ -58,6 +59,13 @@ class _OBJECT_ATTRIBUTES(ctypes.Structure):
 
 class _IO_STATUS_BLOCK(ctypes.Structure):
     _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_size_t)]
+
+
+class _FILE_RENAME_INFORMATION(ctypes.Structure):
+    _fields_ = [("ReplaceIfExists", wintypes.BOOL),
+                ("RootDirectory", wintypes.HANDLE),
+                ("FileNameLength", wintypes.ULONG),
+                ("FileName", wintypes.WCHAR * 1)]
 
 
 class _FILE_DISPOSITION_INFO(ctypes.Structure):
@@ -108,6 +116,10 @@ def _dlls():
         wintypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
         wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG]
     nt.NtCreateFile.restype = wintypes.LONG
+    nt.NtSetInformationFile.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(_IO_STATUS_BLOCK),
+        wintypes.LPVOID, wintypes.ULONG, ctypes.c_int]
+    nt.NtSetInformationFile.restype = wintypes.LONG
     nt.RtlNtStatusToDosError.argtypes = [wintypes.LONG]
     nt.RtlNtStatusToDosError.restype = wintypes.ULONG
     return kernel, nt
@@ -320,5 +332,66 @@ def delete_relative_file(parent, name):
                 handle, FILE_DISPOSITION_INFO_CLASS,
                 ctypes.byref(disposition), ctypes.sizeof(disposition)):
             raise ctypes.WinError()
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def rename_relative_file(parent, source, destination, replace=False):
+    """EXPERIMENTAL: rename atomico por handle e RootDirectory do pai.
+
+    Nao segue reparse points na origem. O destino e resolvido pelo
+    handle do pai, em vez de pathname, inclusive se uma junction
+    substituir o caminho original. So arquivo regular; ainda nao
+    implementa commit seguro, hardlinks/ACL/atomicidade entre operacoes.
+    """
+    _validate_component(source)
+    _validate_component(destination)
+    if source.casefold() == destination.casefold():
+        raise ValueError("origem e destino identicos")
+    kernel, nt = _dlls()
+    name_buffer = ctypes.create_unicode_buffer(source)
+    count = len(source.encode("utf-16-le"))
+    uni = _UNICODE_STRING(count, count, ctypes.cast(name_buffer, wintypes.LPWSTR))
+    attrs = _OBJECT_ATTRIBUTES(
+        ctypes.sizeof(_OBJECT_ATTRIBUTES), parent, ctypes.pointer(uni),
+        OBJ_CASE_INSENSITIVE, None, None)
+    io = _IO_STATUS_BLOCK()
+    handle = wintypes.HANDLE()
+    status = nt.NtCreateFile(
+        ctypes.byref(handle),
+        DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        ctypes.byref(attrs), ctypes.byref(io), None, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT |
+        FILE_SYNCHRONOUS_IO_NONALERT,
+        None, 0)
+    if status < 0:
+        raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+    try:
+        info = _BY_HANDLE_FILE_INFORMATION()
+        if not kernel.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            raise ctypes.WinError()
+        if info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT |
+                                   FILE_ATTRIBUTE_DIRECTORY):
+            raise OSError("rename recusado: reparse point ou diretorio")
+        encoded = destination.encode("utf-16-le")
+        # A estrutura tem um WCHAR flexivel no final; a contagem de
+        # FileNameLength e em bytes e dispensa terminador NUL.
+        offset = _FILE_RENAME_INFORMATION.FileName.offset
+        length = offset + len(encoded)
+        buffer = ctypes.create_string_buffer(length + 2)
+        details = ctypes.cast(buffer, ctypes.POINTER(_FILE_RENAME_INFORMATION))
+        details.contents.ReplaceIfExists = bool(replace)
+        details.contents.RootDirectory = parent
+        details.contents.FileNameLength = len(encoded)
+        ctypes.memmove(ctypes.addressof(buffer) + offset,
+                       encoded, len(encoded))
+        result = _IO_STATUS_BLOCK()
+        status = nt.NtSetInformationFile(
+            handle, ctypes.byref(result), buffer, length,
+            FILE_RENAME_INFORMATION_CLASS)
+        if status < 0:
+            raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
     finally:
         kernel.CloseHandle(handle)
