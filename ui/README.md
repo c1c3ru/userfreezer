@@ -70,7 +70,7 @@ instalação do serviço em Program Files.
    administrativas devem ser NEGADAS.
 2. Rodar como administrador/root: congelar um alvo de teste, consultar
    estado, descartar; repetir com overlay personalizado.
-3. Confirmar que `commit` pede a palavra digitada e backend emite
+3. No Linux, confirmar que `commit` pede a palavra digitada e backend emite
    token temporário. Tentar repetir um token já usado: negar.
 4. Parar serviço: painel deve indicar indisponibilidade sem executar
    operações locais como fallback.
@@ -82,7 +82,7 @@ Os testes automáticos de protocolo e peer credentials não substituem
 os testes de ACL e usabilidade em sessão real. Consulte
 `docs/IPC_SECURITY_DESIGN.md` e a issue #53.
 
-## Bloqueio de segurança para commit no Windows (após v0.1.11)
+## Bloqueio de segurança para commit no Windows (v0.1.12 em diante)
 
 O teste concorrente no PR #84 demonstrou renomeação de diretório
 apesar dos handles Win32 abertos. Para evitar escape da árvore alvo,
