@@ -315,6 +315,12 @@ jobs:
               $retry += 1
           }
           if (-not $pipeOk) { throw "Named pipe administrativo nao foi criado" }
+          # Confirma que o EXE publicado contem o CLI exigido para UAC.
+          $adminClient = Start-Process -FilePath "test\deepfreezer_service_windows-10-11.exe" `
+              -ArgumentList "--admin-cli status" -Wait -PassThru
+          if ($adminClient.ExitCode -ne 0) {
+              throw "EXE --admin-cli status retornou $($adminClient.ExitCode)"
+          }
 
           $svc = Get-Service -Name DeepFreezer
           Write-Host "apos Start-Service: status=$($svc.Status)"
