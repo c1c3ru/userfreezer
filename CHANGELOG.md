@@ -4,6 +4,47 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.11
+
+**Atualização de segurança do IPC Unix e aviso importante sobre commits Windows.**
+
+### Corrigido
+
+- **#53:** o broker Unix agora recusa diretórios do socket que não sejam
+  propriedade do processo servidor, ancestrais simbólicos e diretórios
+  graváveis por terceiros sem sticky bit; na finalização, remove apenas
+  o inode do socket que ele próprio publicou. Testes cobrem diretório
+  inseguro, ancestral simbólico e cenário válido. Compatível com
+  Python 3.8 e sem dependências novas.
+- **#63 — aviso de segurança:** um teste de renomeação feito por outro
+  processo identificou que os handles Win32 existentes **não impedem,
+  por si sós, todas as renomeações concorrentes**. A hipótese de
+  proteção completa contra TOCTOU foi retirada da documentação e
+  permanece como trabalho aberto na
+  [issue #63](https://github.com/c1c3ru/userfreezer/issues/63),
+  com teste reproduzível no
+  [PR #84](https://github.com/c1c3ru/userfreezer/pull/84).
+
+### Recomendações e limitações
+
+- **Não executar `thaw --commit` em diretórios Windows onde outro
+  processo não confiável possa alterar os caminhos simultaneamente.**
+  O suporte a esse modelo de adversário NÃO está comprovado. Use
+  descarte de overlay ou mantenha o alvo sob controle administrativo
+  até que a implementação de commits por handles relativos seguros
+  esteja concluída e testada.
+- O núcleo continua *application-level*. O modo OS-level por diretório
+  Linux é experimental e não é proteção da raiz do SO; os scripts
+  Windows de filtro/boot exigem validação em VM e podem não ser
+  suportados em todas as edições.
+- O executável Windows 7/8 é compilado com Python 3.8, mas o teste
+  nativo em Windows 7 SP1 fica a cargo do mantenedor. Builds e CI no
+  Windows moderno não substituem essa evidência.
+- Os arquivos são publicados com verificações de versão, hashes
+  `SHA256SUMS`, metadados SPDX e proveniência do GitHub Actions.
+  Use apenas os arquivos desta versão, não renomeie os pacotes da
+  v0.1.9.
+
 ## v0.1.10
 
 **Release corretiva de v0.1.9.** A tag pública `v0.1.9` foi criada
