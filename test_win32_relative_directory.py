@@ -9,7 +9,8 @@ import unittest
 from win32_relative_directory import (
     directory_identity, open_relative_directory, open_trusted_root,
     create_relative_file, create_relative_directory, delete_relative_file,
-    rename_relative_file, remove_relative_empty_directory)
+    rename_relative_file, remove_relative_empty_directory,
+    list_relative_directory)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -300,6 +301,53 @@ class NativeRelativeOpenProof(unittest.TestCase):
             finally:
                 if os.path.lexists(junction):
                     os.rmdir(junction)
+
+    def test_enumeration_follows_pinned_directory_not_new_junction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            os.makedirs(os.path.join(old, "nested"))
+            os.makedirs(outside)
+            with open(os.path.join(old, "arquivo-acentuado.txt"), "wb") as f:
+                f.write(b"inside")
+            with open(os.path.join(outside, "outside-only.txt"), "wb") as f:
+                f.write(b"outside")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(cp.returncode, 0, cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(link.returncode, 0, link.stderr)
+                    try:
+                        names = list_relative_directory(pinned)
+                        self.assertIn("arquivo-acentuado.txt", names)
+                        self.assertIn("nested", names)
+                        self.assertNotIn("outside-only.txt", names)
+                        self.assertNotIn("..", names)
+                        self.assertEqual(len(names), len(set(names)))
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_enumeration_bounded_and_validates_limit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with open_trusted_root(temp) as root:
+                self.assertEqual(list_relative_directory(root), [])
+                for invalid in (0, -1, 100001, None):
+                    with self.assertRaises(ValueError):
+                        list_relative_directory(root, invalid)
+                for i in range(7):
+                    create_relative_file(root, "f%d.txt" % i, b"x")
+                with self.assertRaises(OSError):
+                    list_relative_directory(root, limit=3)
+                self.assertEqual(len(list_relative_directory(root)), 7)
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
