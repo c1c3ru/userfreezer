@@ -26,7 +26,7 @@ def _peer_identity(handle, deps):
     _, win32api, win32con, _file, win32pipe, sec = deps
     # Impersonation e' baseada no ULTIMO request lido da instancia pipe.
     # Se falhar, nao aceitar nem operacoes de leitura.
-    win32pipe.ImpersonateNamedPipeClient(handle)
+    sec.ImpersonateNamedPipeClient(handle)
     try:
         token = sec.OpenThreadToken(win32api.GetCurrentThread(),
                                     win32con.TOKEN_QUERY, True)
@@ -48,7 +48,7 @@ def serve_windows(broker, stop_event=None, log=None):
     # usuario local pode ler status, mas SEM permissão administrativa.
     # O servidor aplica impersonation + CheckTokenMembership em cada pedido.
     sddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;WD)"
-    attrs = pywintypes.SECURITY_ATTRIBUTES()
+    attrs = sec.SECURITY_ATTRIBUTES()
     attrs.SECURITY_DESCRIPTOR = sec.ConvertStringSecurityDescriptorToSecurityDescriptor(
         sddl, sec.SDDL_REVISION_1)
     while stop_event is None or not stop_event.is_set():
