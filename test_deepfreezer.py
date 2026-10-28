@@ -327,26 +327,21 @@ class ThawDiscardTests(BaseCase):
         df = self.frozen_df()
         df.write("a.txt", b"mudou")
         df.thaw()
+        df.close()  # lock externo permanece ate fechar a instancia
         df2 = self.open_df()
         self.assertFalse(df2.frozen)
 
-    def test_thaw_solta_o_lock_antes_de_apagar_o_overlay(self):
-        """Regressao: no Windows nao se apaga arquivo aberto.
-
-        O LOCK mora dentro do overlay e fica aberto ate' o release(). Se o
-        rmtree vier primeiro, no Windows ele falha em silencio (por causa
-        do ignore_errors=True), o overlay sobra e a reabertura seguinte
-        morre com "overlay existe sem manifest". No Linux passa nas duas
-        ordens, entao o teste checa a ordem, nao so' o resultado.
-        """
+    def test_thaw_mantem_lock_externo_ate_rmtree_terminar(self):
+        """O lock externo deve continuar ativo durante a remocao (Win7)."""
         import deepfreezer as dfmod
         df = self.frozen_df()
         visto = {}
 
         def ao_remover():
             visto["fd_aberto"] = df._lock.fd is not None
-            visto["lock_em_disco"] = os.path.exists(
-                os.path.join(df.overlay, "LOCK"))
+            visto["lock_externo"] = os.path.isfile(df.overlay + ".lock")
+            with self.assertRaises(DeepFreezeError):
+                DeepFreezer(self.target, lock_timeout=0.1)
 
         real = dfmod.shutil
         dfmod.shutil = _ShutilEspiao(real, ao_remover)
@@ -355,10 +350,80 @@ class ThawDiscardTests(BaseCase):
         finally:
             dfmod.shutil = real
 
-        self.assertFalse(visto["fd_aberto"],
-                         "LOCK ainda aberto no rmtree: quebra no Windows")
-        self.assertTrue(visto["lock_em_disco"],
-                        "LOCK deve persistir entre releases, ate a remocao do overlay")
+        self.assertTrue(visto["fd_aberto"])
+        self.assertTrue(visto["lock_externo"])
+        self.assertFalse(os.path.exists(df.overlay))
+        self.assertFalse(os.path.exists(df.overlay + ".discarding"))
+
+    def test_erro_na_remocao_nao_reporta_sucesso(self):
+        """Falha simulada deixa marcador recuperavel fora do overlay."""
+        import deepfreezer as dfmod
+        df = self.frozen_df()
+        df.write("a.txt", b"pendente")
+        real = dfmod.shutil
+
+        class FalhaRemocao(object):
+            def __getattr__(self, nome):
+                return getattr(real, nome)
+
+            def rmtree(self, *args, **kwargs):
+                raise PermissionError("falha simulada (arquivo em uso)")
+
+        dfmod.shutil = FalhaRemocao()
+        try:
+            with self.assertRaises(DeepFreezeError):
+                df.thaw()
+        finally:
+            dfmod.shutil = real
+        self.assertTrue(os.path.isfile(df.overlay + ".discarding"))
+        self.assertTrue(os.path.isdir(df.overlay))
+        with self.assertRaises(DeepFreezeError):
+            df.read("a.txt")
+        df.close()
+        recovered = self.open_df()
+        self.assertFalse(recovered.frozen)
+        self.assertFalse(os.path.exists(df.overlay))
+        self.assertFalse(os.path.exists(df.overlay + ".discarding"))
+
+    def test_recupera_descarte_parcial_sem_manifest(self):
+        """Crash apos excluir o manifest nao deve bloquear o novo boot."""
+        df = self.frozen_df()
+        overlay = df.overlay
+        df.close()
+        with open(overlay + ".discarding", "wb") as out:
+            out.write(b'{"state":"discarding"}')
+        os.unlink(os.path.join(overlay, "manifest.json"))
+        recovered = self.open_df()
+        self.assertFalse(recovered.frozen)
+        self.assertFalse(os.path.lexists(overlay))
+        self.assertFalse(os.path.exists(overlay + ".discarding"))
+
+    def test_pode_reexecutar_thaw_apos_falha_de_limpeza(self):
+        import deepfreezer as dfmod
+        df = self.frozen_df()
+        real = dfmod.shutil
+
+        class FalhaUmaVez(object):
+            def __init__(self):
+                self.count = 0
+
+            def __getattr__(self, nome):
+                return getattr(real, nome)
+
+            def rmtree(self, *args, **kwargs):
+                self.count += 1
+                if self.count == 1:
+                    raise OSError("falha temporaria")
+                return real.rmtree(*args, **kwargs)
+
+        dfmod.shutil = FalhaUmaVez()
+        try:
+            with self.assertRaises(DeepFreezeError):
+                df.thaw()
+            df.thaw()
+        finally:
+            dfmod.shutil = real
+        self.assertFalse(df.frozen)
         self.assertFalse(os.path.exists(df.overlay))
 
     def test_thaw_sem_freeze_e_erro(self):
@@ -677,7 +742,7 @@ class JournalRecoveryTests(BaseCase):
         ) % (os.path.dirname(os.path.abspath(__file__)), self.target)
         subprocess.check_call([sys.executable, "-c", script])
         # O LOCK persiste em disco, mas nao esta mais adquirido.
-        self.assertTrue(os.path.isfile(os.path.join(df.overlay, "LOCK")))
+        self.assertTrue(os.path.isfile(df.overlay + ".lock"))
         reaberto = self.open_df(lock_timeout=0.2)
         self.assertTrue(reaberto.frozen)
 
