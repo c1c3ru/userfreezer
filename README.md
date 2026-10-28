@@ -152,9 +152,11 @@ with DeepFreezer(r"C:\app") as df:   # ou "/opt/app"
 **Limite honesto:** o freezer é *application-level* — protege a árvore
 contra mudanças feitas por quem passa pela API/CLI. Um `sed -i`
 externo direto no arquivo ainda mexe no disco de verdade. Congelar o
-SO inteiro (qualquer processo) exige abordagem de kernel: `overlayfs`
-no boot (Linux) ou VHDX diferencial sobre a base do `C:\` (Windows) —
-fora do escopo deste core; ver observações no final deste arquivo.
+SO inteiro (qualquer processo) exige abordagem de kernel/filtro:
+OverlayFS no boot (Linux), UWF em edições Windows compatíveis,
+EWF/FBWF em determinadas imagens Windows 7 Embedded ou uma estratégia
+de boot diferencial validada. O provisionador VHDX existente **não
+suporta Windows 7 comum**. Ver `docs/OS_LEVEL_VALIDATION.md`.
 
 ## Serviço de sistema (`packaging/`)
 
@@ -207,21 +209,26 @@ pro passo a passo completo, os caminhos manuais
 (`harden_acl.ps1`) e o que o CI já valida de verdade vs. o que só dá
 pra confirmar numa máquina Windows real.
 
-## Bandeja do sistema (`ui/`)
+## Painel e bandeja autenticados (`ui/`)
 
-Ícone na área de notificação — cadeado azul (congelado) ou laranja
-(descongelado) — com painel de status e alternância de estado atrás
-de senha de admin (hash PBKDF2-HMAC-SHA256 + salt, nunca texto plano):
+A interface é um **cliente sem privilégios**. O daemon faz a autorização
+via `SO_PEERCRED` (Linux) ou token do cliente do Named Pipe (Windows).
+Para operações administrativas, a UI solicita elevação ao sistema
+operacional via polkit/`pkexec` ou UAC. As operações destrutivas
+exigem confirmação explícita e nonce temporário de uso único.
 
+```sh
+pip install pystray Pillow  # apenas para ícone na bandeja; Tkinter no painel
+python3 ui/tray_app.py
+python3 ui/health_panel.py
+python3 admin_client.py status
 ```
-pip install pystray Pillow                                    # única dependência externa do projeto
-python3 ui/set_admin_password.py --config /etc/deepfreezer/config.json
-python3 ui/tray_app.py --config /etc/deepfreezer/config.json
-```
 
-Detalhes, dependências (Tkinter pode exigir `python3-tk` no Linux) e o
-que ficou pendente de validação numa sessão gráfica real em
-`ui/README.md`.
+O daemon Linux é um serviço residente que oferece o IPC local. O
+serviço Windows também oferece Named Pipe; sem ele, ações administrativas
+não têm fallback local. O painel requer Python + Tkinter e (no Windows)
+pywin32, e precisa ser testado em sessão gráfica real antes de produção.
+Detalhes em `ui/README.md` e `docs/WIN7_MANUAL_TEST.md`.
 
 ## Receitas de arquitetura: congelamento de SO completo (nível de kernel)
 
