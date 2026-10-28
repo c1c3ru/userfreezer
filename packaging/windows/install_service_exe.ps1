@@ -119,7 +119,10 @@ Copy-Item $SourceExe $InstalledExe -Force
 
 $TargetConfig = Join-Path $ConfigDir "config.json"
 if (-not (Test-Path $TargetConfig)) {
-    '{"targets": []}' | Set-Content -Path $TargetConfig -Encoding UTF8
+    # Windows PowerShell 2.0/5.1 grava BOM com -Encoding UTF8.
+    # Usar .NET evita BOM e continua compativel com Windows 7 (sem PS 5+).
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($TargetConfig, '{"targets": []}', $utf8NoBom)
     Write-Host "criado $TargetConfig vazio -- edite 'targets' antes de iniciar o servico"
 }
 
