@@ -3,11 +3,16 @@
 $ErrorActionPreference = "Stop"
 $root = Join-Path $env:TEMP ("df-no-reboot-" + [guid]::NewGuid().ToString("N"))
 $target = Join-Path $root "target"
+$excluded = Join-Path $root "excluded"
 $evidence = Join-Path $root "evidence"
 $probe = Join-Path $PSScriptRoot "vm_probe.ps1"
-New-Item -ItemType Directory -Force -Path $target, $evidence | Out-Null
+New-Item -ItemType Directory -Force -Path $target, $evidence, $excluded | Out-Null
 try {
-    & $probe -Prepare -ProbeRoot $target -EvidenceDir $evidence -EvidenceIsExcluded
+    & $probe -Prepare -ProbeRoot $target -ExcludedRoot $excluded -EvidenceDir $evidence -EvidenceIsExcluded
+    $excludedMarker = Get-ChildItem -LiteralPath $excluded -Filter "deepfreezer-excluded-probe-*.txt"
+    if (@($excludedMarker).Count -ne 1) {
+        throw "sentinela da exclusao nao foi criada"
+    }
     $record = Get-Content (Join-Path $evidence "deepfreezer-probe-record.txt")
     $markerLine = @($record | Where-Object { $_.StartsWith("marker=") })[0]
     if (-not $markerLine) { throw "marker nao foi gravado" }

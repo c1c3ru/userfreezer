@@ -51,6 +51,20 @@ No PowerShell elevado, depois de bootar com o filtro realmente ativo:
 .\vm_probe.ps1 -Prepare -ProbeRoot "C:\DF-Probe" -EvidenceDir "E:\evidencias"
 ```
 
+**Teste simultâneo da exclusão (recomendado para UWF/EWF/FBWF):**
+crie antes do filtro um diretório `C:\DF-Excluido` e registre-o como
+exclusão real no mecanismo de proteção. Com o filtro ativo, use:
+
+```powershell
+.\vm_probe.ps1 -Prepare -ProbeRoot "C:\DF-Probe" -ExcludedRoot "C:\DF-Excluido" -EvidenceDir "E:\evidencias"
+```
+
+O script cria uma sentinela dentro do diretório excluído no mesmo volume.
+Depois do reboot, o resultado será PASS somente se a escrita comum
+desaparecer **e** a sentinela excluída persistir. Se o diretório
+excluído não estiver realmente excluído, o teste marcará
+`FAIL_exclusao_nao_persistiu`. A ferramenta não configura o filtro.
+
 **Reinicie a VM manualmente**. Na sessão seguinte:
 
 ```powershell
