@@ -395,3 +395,42 @@ def rename_relative_file(parent, source, destination, replace=False):
             raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
     finally:
         kernel.CloseHandle(handle)
+
+
+def remove_relative_empty_directory(parent, name):
+    """EXPERIMENTAL: remove apenas DIRETORIO VAZIO por handle fixado.
+
+    Rejeita junction/reparse point no nome final e nao reconstroi path.
+    Devolve erro se nao estiver vazio. Nao e' exclusao recursiva;
+    ate a #63 estar validada, commit Windows permanece bloqueado.
+    """
+    _validate_component(name)
+    kernel, nt = _dlls()
+    name_buffer = ctypes.create_unicode_buffer(name)
+    count = len(name.encode("utf-16-le"))
+    uni = _UNICODE_STRING(count, count, ctypes.cast(name_buffer, wintypes.LPWSTR))
+    attrs = _OBJECT_ATTRIBUTES(
+        ctypes.sizeof(_OBJECT_ATTRIBUTES), parent, ctypes.pointer(uni),
+        OBJ_CASE_INSENSITIVE, None, None)
+    io = _IO_STATUS_BLOCK()
+    handle = wintypes.HANDLE()
+    status = nt.NtCreateFile(
+        ctypes.byref(handle),
+        DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        ctypes.byref(attrs), ctypes.byref(io), None, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT |
+        FILE_SYNCHRONOUS_IO_NONALERT,
+        None, 0)
+    if status < 0:
+        raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+    try:
+        _check_directory(kernel, handle)
+        disposition = _FILE_DISPOSITION_INFO(True)
+        if not kernel.SetFileInformationByHandle(
+                handle, FILE_DISPOSITION_INFO_CLASS,
+                ctypes.byref(disposition), ctypes.sizeof(disposition)):
+            raise ctypes.WinError()
+    finally:
+        kernel.CloseHandle(handle)
