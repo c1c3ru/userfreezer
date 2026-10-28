@@ -77,3 +77,18 @@ por teste real.
 
 Fontes: [Microsoft — native VHD boot no Windows 7](https://devblogs.microsoft.com/cesardelatorre/windows-7-natively-booting-from-a-vhd-file-virtual-pc-image/),
 [Microsoft — UWF Windows 10/11](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/).
+
+## API de estado OS-level separado da saúde da aplicação
+
+O broker administrativo apresenta, por alvo, o objeto `os_level` com
+`state`, `strategy`, `scope`, `source`, `reboot_verified` e `error`.
+No Linux, `active` significa exclusivamente que `findmnt` verificou
+montagem `overlay` naquele ponto de diretório; um mount comum retorna
+`inactive`. Em qualquer hipótese `reboot_verified=false` até existir
+prova independente de reinicialização. Em Windows, UWF/EWF/FBWF não são
+inspecionados por esse broker e o estado é **`unverified`**, mesmo se a
+API estiver `healthy`. Essa consulta não altera volumes nem ativa filtros.
+
+O teste real de kernel na CI verifica `active` durante o OverlayFS e
+`inactive` depois do `umount`. Essas observações não substituem a
+matriz de VM da #54 nem representam proteção da raiz do Linux.

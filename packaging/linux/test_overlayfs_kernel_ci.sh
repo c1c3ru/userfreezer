@@ -25,6 +25,16 @@ sudo python3 packaging/linux/overlayfs_session.py --target "$TARGET" --enable \
 mountpoint -q "$TARGET" || { echo "overlay nao montado"; exit 1; }
 test "$(findmnt -n -o FSTYPE --mountpoint "$TARGET")" = overlay
 test "$(python3 packaging/linux/overlayfs_session.py --target "$TARGET" --status | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])')" = active
+python3 - "$TARGET" <<'PY'
+import json
+import sys
+from os_level_status import probe_target
+observed = probe_target(sys.argv[1])
+assert observed["state"] == "active", observed
+assert observed["scope"] == "os-level-directory", observed
+assert not observed["reboot_verified"], observed
+print("OS-level snapshot ativo por kernel:", json.dumps(observed))
+PY
 
 # Gravador EXTERNO: shell/tee, sem passar pela API DeepFreezer.
 printf 'externa\n' | sudo tee "$TARGET/outside.txt" >/dev/null
@@ -33,6 +43,12 @@ test "$(sudo cat "$TARGET/outside.txt")" = externa
 test "$(sudo cat "$TARGET/baseline.txt")" = alterado
 
 sudo umount "$TARGET"
+python3 - "$TARGET" <<'PY'
+import sys
+from os_level_status import probe_target
+observed = probe_target(sys.argv[1])
+assert observed["state"] == "inactive", observed
+PY
 test ! -e "$TARGET/outside.txt"
 test "$(sudo cat "$TARGET/baseline.txt")" = baseline
 echo "OK: writes externos foram descartados APOS unmount do OverlayFS."
