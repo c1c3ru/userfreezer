@@ -1,91 +1,74 @@
-# DeepFreezer — bandeja do sistema (Tarefa 3)
+# DeepFreezer — painel de administração via IPC local
 
-Ícone na área de notificação: cadeado **azul** (congelado) ou
-**laranja** (descongelado), painel de status e alternância de estado
-protegidos por senha de admin.
+A interface de bandeja e o painel **não importam o núcleo DeepFreezer**
+nem têm acesso direto ao `config.json` protegido. As solicitações passam
+pelo serviço local, que verifica as credenciais do SISTEMA OPERACIONAL.
 
-Única parte do projeto com dependências externas — o core
-(`deepfreezer.py`) e o daemon (`packaging/`) são só stdlib, mas não
-existe API stdlib para ícone de bandeja:
+## Requisitos
 
-```
-pip install pystray Pillow
-```
+- Python 3.8+ e Tkinter (Linux: `python3-tk`); para bandeja,
+  `pip install pystray Pillow`.
+- Windows: `pip install pywin32` para o cliente Named Pipe, inclusive
+  quando o daemon/serviço está empacotado em EXE.
+- Serviço residente com IPC ativo:
+  - Linux: `deepfreezer.service` executa `deepfreezerd.py --serve`
+    e disponibiliza `/run/deepfreezer/admin.sock`.
+  - Windows 7/10/11: serviço DeepFreezer expõe o Named Pipe local
+    `\\.\pipe\DeepFreezerAdmin`.
 
-Os diálogos (senha, status, confirmação) usam **Tkinter**, que é
-stdlib mas em algumas distros Linux vem separado do interpretador
-(`sudo apt install python3-tk` / `dnf install python3-tkinter`). No
-Windows, os instaladores oficiais do python.org já incluem Tk.
+O socket Linux usa `SO_PEERCRED`; no Windows o serviço usa ACL no
+Named Pipe e impersonation do token recebido. Nenhuma senha local da
+interface ou hash/salt do `config.json` é enviada pelo cliente.
 
-## Configurar a senha de admin
+## Consulta (sem acesso root/Administrators)
 
-Usa o mesmo `config.json` do daemon (`packaging/config.example.json`).
-A senha nunca é gravada em texto plano — só o hash PBKDF2-HMAC-SHA256
-(200 000 iterações) e o salt, nas chaves `admin_password_hash` /
-`admin_password_salt`:
-
-```
-python3 ui/set_admin_password.py --config /etc/deepfreezer/config.json
-```
-
-## Rodar a bandeja
-
-```
-python3 ui/tray_app.py --config /etc/deepfreezer/config.json
+```bash
+python admin_client.py status
+python ui/health_panel.py
+python ui/tray_app.py
 ```
 
-Sem `--target`, usa o primeiro alvo listado no config. Menu:
+O painel lista todos os alvos configurados, inclusive os que usam
+`overlay` personalizado, e diferencia **resultado do último enforcement**
+de **estado atual do overlay**. `healthy` é apenas *application-level*,
+**não significa proteção contra gravação externa ao DeepFreezer**.
 
-- **Status...** — data do congelamento, arquivos monitorados e uso de
-  disco do overlay (saem de `DeepFreezer.status()` do core).
-- **Congelar** / **Descongelar...** — alterna o estado; descongelar
-  pergunta se é pra aplicar as mudanças da sessão (commit) ou
-  descartá-las e voltar ao estado congelado.
-- **Sair** — fecha só o ícone da bandeja (não mexe no estado congelado
-  nem no serviço de boot).
+## Operações administrativas
 
-Qualquer uma dessas ações pede a senha de admin antes de continuar.
+A interface inicia sem privilégio e pode mostrar status; usuários comuns
+não conseguem executar `freeze`, `discard` ou `commit`.
+O broker **autoriza cada ação** pelo SO:
 
-## Autostart (sessão do usuário logado)
+- Linux: UID 0. Para testes de linha de comando, usar `sudo python3
+  admin_client.py freeze --target /alvo` ou configurar uma estratégia
+  de elevação autorizada fora da interface.
+- Windows: token elevado pertencente a Administrators. O usuário deve
+  iniciar o cliente com **Executar como administrador**. O serviço
+  jamais confia apenas na confirmação da interface.
+- Em `discard` e `commit`, a UI pede confirmação escrita e recebe
+  do serviço um nonce de **uso único**, válido por 30 segundos e
+  vinculado ao peer, alvo e operação. Não reutilizar o token.
 
-O ícone de bandeja roda na sessão gráfica do usuário, não como
-`root`/`SYSTEM` (isso é papel do serviço de boot em `packaging/`).
-Duas formas comuns de iniciar automaticamente ao logar:
+**A interface não eleva privilégios automaticamente.** Em ambiente
+com usuários comuns, o administrador deve aprovar via procedimento
+controlado pelo sistema operacional. Até integração com um agente
+de elevação/UAC/polkit, ações de usuários sem token apropriado são
+negadas com erro explícito.
 
-- **Linux**: unit de usuário do systemd (`~/.config/systemd/user/`)
-  ou entrada em `~/.config/autostart/*.desktop`.
-- **Windows**: atalho na pasta Inicializar (`shell:startup`) ou uma
-  tarefa agendada "ao fazer logon" pelo Agendador de Tarefas.
+## Testes manuais
 
-Não incluído aqui como script pronto — depende de como o admin já
-distribui software nos laboratórios (GPO, Ansible, imagem de disco
-etc.), e forçar um caminho específico seria além do que a Tarefa 3
-pediu.
+1. Abrir o painel como usuário comum: status deve aparecer, operações
+   administrativas devem ser NEGADAS.
+2. Rodar como administrador/root: congelar um alvo de teste, consultar
+   estado, descartar; repetir com overlay personalizado.
+3. Confirmar que `commit` pede a palavra digitada e backend emite
+   token temporário. Tentar repetir um token já usado: negar.
+4. Parar serviço: painel deve indicar indisponibilidade sem executar
+   operações locais como fallback.
+5. Em Windows 7 SP1, validar Python 3.8, atualização KB2533623,
+   pywin32 e conexão no Named Pipe; registrar logs de execução.
+6. Validar Tk/pystray numa sessão gráfica real Windows e Linux.
 
-## O que não foi verificado aqui
-
-O sandbox usado para escrever isto é Linux headless: sem servidor X
-(`pystray` já falha no `import`, antes mesmo de abrir um ícone) e sem
-Tkinter disponível para este interpretador. O que **foi** validado de
-verdade, sem GUI:
-
-- `admin_auth.py` (hash/verificação de senha, salts distintos por
-  chamada, senha ausente/incorreta/correta) — testado diretamente.
-- `icons.py` (Pillow): ícones 64×64 RGBA gerados, cor predominante
-  azul/laranja conferida por pixel, exportação PNG funcionando.
-- **Toda a lógica de `tray_app.py`** (`_require_password`,
-  `_toggle` nos três ramos — commit / descarte / cancelar —,
-  `_build_menu`, `_status_text`, troca de ícone) — exercida com
-  stubs de `tkinter`/`pystray` no lugar dos módulos reais, chamando
-  o `DeepFreezer` de verdade por trás. Todos os cenários passaram:
-  bloqueio sem senha configurada, senha errada, senha certa, cancelar
-  diálogo, congelar/descongelar de verdade com o congelamento
-  refletindo no ícone e no texto de status.
-
-O que **não** dá pra confirmar sem uma máquina com desktop real:
-renderização do ícone na bandeja de verdade (Windows/GNOME/KDE/etc.),
-aparência dos diálogos do Tk, e comportamento do `pystray` em cada
-backend (AppIndicator/GTK no Linux, win32 no Windows). Antes de
-distribuir: instalar as dependências, rodar `tray_app.py` numa sessão
-gráfica normal, e conferir visualmente o ícone e os diálogos nos dois
-SOs.
+Os testes automáticos de protocolo e peer credentials não substituem
+os testes de ACL e usabilidade em sessão real. Consulte
+`docs/IPC_SECURITY_DESIGN.md` e a issue #53.
