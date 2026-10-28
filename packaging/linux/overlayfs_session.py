@@ -125,6 +125,35 @@ def activate(target, size_mb=256, dry_run=False, accepted=False):
             "scope": "os-level-directory", "state": "active"}
 
 
+def reject_api_target_overlap(target, config_path):
+    """Falha fechada para alvos application-level iguais/aninhados."""
+    if not config_path:
+        return
+    if not os.path.isabs(config_path):
+        raise OSLevelError("guard-config deve ser absoluto")
+    try:
+        with open(config_path, "r", encoding="utf-8-sig") as handle:
+            config = json.load(handle)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as exc:
+        raise OSLevelError("config API nao validavel: %s" % exc)
+    if not isinstance(config, dict) or not isinstance(config.get("targets"), list):
+        raise OSLevelError("config API invalida")
+    for entry in config["targets"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("target"), str):
+            raise OSLevelError("config API tem alvo invalido")
+        configured = os.path.normpath(entry["target"])
+        if not os.path.isabs(configured):
+            raise OSLevelError("config API contem caminho relativo")
+        try:
+            common = os.path.commonpath((target, configured))
+        except ValueError:
+            continue
+        if common in (target, configured):
+            raise OSLevelError("OS-level conflita com API: %s" % configured)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="OverlayFS OS-level POR DIRETORIO (somente Linux, VM primeiro)")
@@ -133,6 +162,7 @@ def main(argv=None):
     p.add_argument("--enable", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--size-mb", type=int, default=256)
+    p.add_argument("--guard-config", help="recusa sobreposicao com config API")
     p.add_argument("--i-accept-volatile-protection", action="store_true")
     args = p.parse_args(argv)
     try:
@@ -142,6 +172,9 @@ def main(argv=None):
             result = {"target": args.target, "state": protection_status(args.target),
                       "scope": "os-level-directory"}
         else:
+            if args.guard_config:
+                safe_target = _safe_absolute(args.target)
+                reject_api_target_overlap(safe_target, args.guard_config)
             result = activate(args.target, args.size_mb, args.dry_run,
                               args.i_accept_volatile_protection)
         print(json.dumps(result, indent=2))

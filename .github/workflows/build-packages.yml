@@ -86,6 +86,8 @@ jobs:
         run: |
           set -e
           sudo dpkg -i dist/*.deb
+          test -f '/etc/systemd/system/deepfreezer-overlayfs@.service'
+          test -z "$(find /etc/systemd/system/multi-user.target.wants -maxdepth 1 -name 'deepfreezer-overlayfs@*.service' -print -quit 2>/dev/null)"
           dpkg -L deepfreezer
           sudo python3 -c "
           import json

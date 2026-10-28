@@ -65,6 +65,42 @@ class OverlayFsSafetyTests(unittest.TestCase):
                     overlay.protection_status(os.path.join(root, "ausente")),
                     "error")
 
+    @unittest.skipIf(os.name == "nt", "Linux")
+    def test_recusa_sobreposicao_com_daemon_application_level(self):
+        import json
+        with tempfile.TemporaryDirectory() as root:
+            cfg = os.path.join(root, "config.json")
+            target = os.path.join(root, "target")
+            os.makedirs(os.path.join(target, "child"))
+            for configured in (target, root, os.path.join(target, "child")):
+                with self.subTest(configured=configured):
+                    with open(cfg, "w", encoding="utf-8") as out:
+                        json.dump({"targets": [{"target": configured}]}, out)
+                    with self.assertRaises(overlay.OSLevelError):
+                        overlay.reject_api_target_overlap(target, cfg)
+            with open(cfg, "w", encoding="utf-8") as out:
+                json.dump({"targets": [{"target": "/srv/another"}]}, out)
+            overlay.reject_api_target_overlap(target, cfg)
+
+    def test_guard_config_corrompida_falha_fechado(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "broken.json")
+            with open(path, "w", encoding="utf-8") as out:
+                out.write("{invalid")
+            with self.assertRaises(overlay.OSLevelError):
+                overlay.reject_api_target_overlap("/srv/alvo", path)
+
+    def test_unit_boot_nao_tem_start_automatico_na_politica(self):
+        path = os.path.join(os.path.dirname(__file__), "packaging",
+                            "linux", "deepfreezer-overlayfs@.service")
+        with open(path, encoding="utf-8") as out:
+            unit = out.read()
+        for token in ("Type=oneshot", "RemainAfterExit=yes",
+                      "--target %f", "--guard-config /etc/deepfreezer/config.json",
+                      "--i-accept-volatile-protection"):
+            self.assertIn(token, unit)
+        self.assertNotIn("ExecStop=", unit)
+
     def test_limites_da_memoria_da_montagem(self):
         with mock.patch.object(overlay, "_safe_absolute", return_value="/srv/alvo"):
             for size in (-1, 0, 15, 4097):

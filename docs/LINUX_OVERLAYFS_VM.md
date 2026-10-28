@@ -78,3 +78,30 @@ ambas as montagens mesmo em caso de falha.
 **Importante:** descarte após `umount` não prova recuperação após
 reinicialização, ativação no boot, exclusões persistentes nem rollback
 do sistema operacional. Esses itens continuam sob a #49 e #54.
+
+
+## Unidade systemd opcional de boot (EXPERIMENTAL, em VM)
+
+O pacote instala `deepfreezer-overlayfs@.service` **sem habilitar**.
+A ativação exige ação explícita do administrador e montagem por diretório
+dentro da allowlist, nunca na raiz `/`. O serviço recusa alvos que
+coincidam ou se sobreponham aos do `/etc/deepfreezer/config.json`
+application-level. Com erro de configuração falha antes da montagem.
+
+```bash
+TARGET=/srv/deepfreezer-vm-test
+INSTANCE=$(systemd-escape --path "$TARGET")
+sudo systemctl enable "deepfreezer-overlayfs@${INSTANCE}.service"
+# Na VM descartavel, reinicie e confirme o mount verdadeiro:
+sudo systemctl status "deepfreezer-overlayfs@${INSTANCE}.service"
+findmnt --mountpoint "$TARGET"
+```
+
+A unidade roda **depois de local-fs.target, antes de multi-user.target**,
+não no initramfs. Portanto ela não impede gravações anteriores ao
+início da unidade, nem protege o restante da raiz. Desabilitar com
+`systemctl disable` impede novos boots, mas não desmonta o overlay
+desta sessão; **não confunda stop/disable com desmontagem**. Para encerrar
+com segurança, volte a uma VM de manutenção e reinicie. Não habilitar
+em produção até validar reboot, exclusões, rollback e conflito de ordem
+de serviços. A #49 permanece aberta.
