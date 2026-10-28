@@ -26,18 +26,36 @@ def request(action="status", target=None, confirm=None, operation=None,
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="DeepFreezer - cliente IPC local")
-    p.add_argument("action", choices=("status", "freeze", "prepare", "discard", "commit"))
+    p.add_argument("action", choices=("status", "freeze", "prepare", "discard", "commit",
+                                      "approve-discard", "approve-commit"))
     p.add_argument("--target", help="alvo cadastrado")
     p.add_argument("--operation", choices=("discard", "commit"))
     p.add_argument("--confirm", help="nonce fornecido por prepare")
     p.add_argument("--socket", default=None)
     a = p.parse_args(argv)
     try:
-        response = request(a.action, a.target, a.confirm, a.operation, a.socket)
-    except (OSError, ValueError, RuntimeError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}))
+        if a.action in ("approve-discard", "approve-commit"):
+            if not a.target:
+                raise ValueError("target obrigatorio para acao privilegiada")
+            op = a.action[len("approve-"):]
+            prepared = request("prepare", a.target, operation=op,
+                               socket_path=a.socket)
+            if not prepared.get("ok"):
+                response = prepared
+            else:
+                token = prepared["result"]["token"]
+                # Mesma identidade de processo nas duas conexoes.
+                # Backend consome nonce uma unica vez.
+                response = request(op, a.target, confirm=token,
+                                   socket_path=a.socket)
+        else:
+            response = request(a.action, a.target, a.confirm, a.operation, a.socket)
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        if sys.stdout is not None:
+            print(json.dumps({"ok": False, "error": str(exc)}))
         return 2
-    print(json.dumps(response, ensure_ascii=False, indent=2))
+    if sys.stdout is not None:  # PyInstaller --noconsole: stdout=None
+        print(json.dumps(response, ensure_ascii=False, indent=2))
     return 0 if response.get("ok") else 1
 
 
