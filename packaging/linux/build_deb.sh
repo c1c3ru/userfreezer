@@ -22,6 +22,7 @@ install -d -m 0755 "$STAGE/etc/systemd/system"
 
 install -m 0755 "$REPO_ROOT/deepfreezer.py" "$STAGE/opt/deepfreezer/deepfreezer.py"
 install -m 0644 "$REPO_ROOT/enforcement_health.py" "$STAGE/opt/deepfreezer/enforcement_health.py"
+install -m 0644 "$REPO_ROOT/admin_ipc.py" "$STAGE/opt/deepfreezer/admin_ipc.py"
 install -m 0755 "$SRC_DIR/deepfreezerd.py" "$STAGE/opt/deepfreezer/deepfreezerd.py"
 install -m 0644 "$REPO_ROOT/packaging/config.example.json" "$STAGE/etc/deepfreezer/config.json"
 install -m 0644 "$SRC_DIR/deepfreezer.service" "$STAGE/etc/systemd/system/deepfreezer.service"
