@@ -79,9 +79,19 @@ def serve_windows(broker, stop_event=None, log=None):
                             "error": {"code": "ProtocolError",
                                       "message": "requisicao rejeitada"}}
             encoded = json.dumps(response, separators=(",", ":")).encode("utf-8")
-            if len(encoded) <= MAX_BYTES:
-                win32file.WriteFile(handle, encoded)
-            win32pipe.DisconnectNamedPipe(handle)
+            try:
+                if len(encoded) <= MAX_BYTES:
+                    win32file.WriteFile(handle, encoded)
+            except pywintypes.error as exc:
+                # O peer pode fechar logo apos conectar (health-check)
+                # ou ao receber erro. Isso NAO deve matar o servidor IPC.
+                if log:
+                    log.debug("cliente pipe desconectado: %s", exc)
+            finally:
+                try:
+                    win32pipe.DisconnectNamedPipe(handle)
+                except pywintypes.error:
+                    pass
     finally:
         win32file.CloseHandle(handle)
 
