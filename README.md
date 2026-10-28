@@ -26,6 +26,10 @@ do administrador.
 > do projeto. O congelamento do núcleo é **application-level**, não
 > proteção integral contra modificações externas.
 
+> **Acompanhamento da v0.2.0:** [estado central e próximos passos](docs/STATUS_CONSOLIDACAO_V020.md).
+> Os recursos experimentais só serão chamados de concluídos após os
+> critérios de aceite e evidências de VM, especialmente Windows 7 SP1.
+
 ## Pacotes prontos (.deb / .exe / ferramental Windows)
 
 O workflow `.github/workflows/build-packages.yml` builda os pacotes a
