@@ -17,15 +17,15 @@ Estrategias possiveis (campo "strategy" do resultado):
                   UWF no Windows 7 Embedded Standard / POSReady.
                   Nativo, zero driver proprio; orquestrado via
                   ewfmgr.exe / fbwfmgr.exe.
-  "vhdx_diff"  -- Nenhum write filter nativo disponivel (edicoes Home
-                  ou Pro em qualquer versao, ou edicao nao
+  "vhdx_diff"  -- Nenhum write filter nativo disponivel nos
+                  Windows 10/11 Home/Pro (ou edicao nao
                   reconhecida). Unico caminho pra proteger a maquina
                   inteira nesse caso: disco diferencial VHDX no boot
                   -- exige reprovisionar a maquina, nao e' so instalar
                   um servico em cima do Windows ja instalado.
   "unsupported" -- versao do Windows fora do escopo suportado (mais
-                  antiga que o Windows 7, ou Windows 8/8.1 -- nao
-                  pedido no escopo atual), ou informacao insuficiente
+                  antiga que o Windows 7, Windows 8/8.1 sem suporte,
+                  Windows 7 comum sem filtro Embedded), ou informacao insuficiente
                   pra decidir com seguranca.
 
 Import seguro em qualquer SO: soh a leitura real (get_os_info) toca o
@@ -36,7 +36,7 @@ edition ja lidos) e roda/testa em qualquer plataforma.
 os valores documentados pela Microsoft (UWF) e os mais comuns de
 imagens Windows 7 Embedded Standard/POSReady, mas variam por OEM e
 versao de imagem. Qualquer EditionID nao reconhecido cai no fallback
-seguro (vhdx_diff) -- este modulo nunca assume que um write filter
+conservador (VHDX experimental para Windows 10/11, unsupported no Win7) -- este modulo nunca assume que um write filter
 nativo existe sem casar com uma lista explicita. Isso NAO foi testado
 contra Windows real (ambiente de desenvolvimento e' Linux); antes de
 confiar em producao, rode `python os_detect.py` numa maquina Windows
@@ -148,9 +148,12 @@ def classify(build, edition):
         return {"windows_version": "7", "edition": edition,
                 "strategy": "ewf_fbwf",
                 "reason": "edicao Embedded Standard/POSReady com EWF/FBWF nativo"}
+    # Win7 nao suporta native boot VHDX; native boot VHD (.vhd)
+    # tinha restricoes de edicao e requer outro procedimento.
+    # O script vhdx_diff_setup.ps1 NAO implementa esse caminho.
     return {"windows_version": "7", "edition": edition,
-            "strategy": "vhdx_diff",
-            "reason": "edicao Home/Pro/Ultimate (ou nao reconhecida) sem write filter nativo"}
+            "strategy": "unsupported",
+            "reason": "Windows 7 comum: sem EWF/FBWF e sem suporte ao provisionador VHDX atual"}
 
 
 def detect_strategy():

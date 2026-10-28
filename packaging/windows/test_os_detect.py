@@ -63,14 +63,14 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(r["windows_version"], "7")
         self.assertEqual(r["strategy"], "ewf_fbwf")
 
-    def test_win7_professional_cai_no_vhdx(self):
+    def test_win7_professional_nao_sugere_vhdx(self):
         r = classify(7601, "Professional")
         self.assertEqual(r["windows_version"], "7")
-        self.assertEqual(r["strategy"], "vhdx_diff")
+        self.assertEqual(r["strategy"], "unsupported")
 
-    def test_win7_home_premium_cai_no_vhdx(self):
+    def test_win7_home_premium_nao_sugere_vhdx(self):
         r = classify(7600, "HomePremium")
-        self.assertEqual(r["strategy"], "vhdx_diff")
+        self.assertEqual(r["strategy"], "unsupported")
 
     # -- fora do escopo suportado -----------------------------------
     def test_win8_fica_unsupported(self):
@@ -94,9 +94,9 @@ class ClassifyTests(unittest.TestCase):
         r = classify(19045, "AlgumaEdicaoNovaQueNaoEstaNaLista")
         self.assertEqual(r["strategy"], "vhdx_diff")
 
-    def test_edicao_win7_desconhecida_cai_no_vhdx_nao_ewf(self):
+    def test_edicao_win7_desconhecida_falha_fechado(self):
         r = classify(7601, "AlgumaEdicaoNovaQueNaoEstaNaLista")
-        self.assertEqual(r["strategy"], "vhdx_diff")
+        self.assertEqual(r["strategy"], "unsupported")
 
 
 if __name__ == "__main__":

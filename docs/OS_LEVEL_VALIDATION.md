@@ -62,3 +62,18 @@ VM descartável com checkpoint anterior.
 - [ ] Versão `v0.1.9` de binários Win7 executada em VM SP1 antes de declarar suporte.
 
 O CI corrente em Windows moderno/Python 3.8 não substitui VM Windows 7.
+
+
+### Compatibilidade crítica: Windows 7 e boot de VHDX
+
+O **Windows 7 comum não recebe estratégia OS-level automaticamente**.
+O recurso nativo de boot a partir de VHD do Windows 7 é distinto do
+boot VHDX usado pelo provisionador atual e tinha restrições de edição
+(Enterprise/Ultimate). Portanto, `os_detect.py` retorna `unsupported`
+para Windows 7 não Embedded; não executar `vhdx_diff_setup.ps1` para
+instalar Windows 7. O Windows Embedded 7 só pode usar EWF/FBWF se os
+filtros estiverem presentes na imagem licenciada e forem comprovados
+por teste real.
+
+Fontes: [Microsoft — native VHD boot no Windows 7](https://devblogs.microsoft.com/cesardelatorre/windows-7-natively-booting-from-a-vhd-file-virtual-pc-image/),
+[Microsoft — UWF Windows 10/11](https://learn.microsoft.com/en-us/windows/configuration/unified-write-filter/).
