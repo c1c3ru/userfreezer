@@ -119,3 +119,16 @@ renderiza uma instância real de Tk/ttk sob Xvfb e publica o artefato
 Os alvos e erros da imagem são **fixtures de teste**, não dados de
 estação real. O ensaio de desktop Windows 7 e aprovação UAC ainda
 exige sessão gráfica manual conforme `docs/WIN7_MANUAL_TEST.md`.
+
+## Teste automatizado gráfico Windows
+
+A suíte de CI Windows executa `test_ui_smoke_windows.py` com uma janela
+Tkinter real (oculta no runner), validando seleção de dois alvos,
+`overlay` personalizado, erros ACL, estado OS-level `unverified` e
+bloqueio de commit sem UAC. O teste não usa credenciais nem modifica
+um serviço instalado. Os screenshots de Linux/Xvfb continuam disponíveis
+como artefatos do job `linux-ui-smoke`.
+
+**Windows 7 SP1 continua exigindo teste manual em desktop:** screenshot
+real, fluxo de UAC, login de usuário não administrador e operação de
+`discard` via serviço protegido, conforme `docs/WIN7_MANUAL_TEST.md`.
