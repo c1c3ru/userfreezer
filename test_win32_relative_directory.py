@@ -10,7 +10,7 @@ from win32_relative_directory import (
     directory_identity, open_relative_directory, open_trusted_root,
     create_relative_file, create_relative_directory, delete_relative_file,
     rename_relative_file, remove_relative_empty_directory,
-    list_relative_directory)
+    list_relative_directory, remove_relative_tree)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -348,6 +348,73 @@ class NativeRelativeOpenProof(unittest.TestCase):
                 with self.assertRaises(OSError):
                     list_relative_directory(root, limit=3)
                 self.assertEqual(len(list_relative_directory(root)), 7)
+
+    def test_recursive_remove_pinned_tree_does_not_follow_junction_swap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            os.makedirs(os.path.join(old, "tree", "inner", "deep"))
+            os.makedirs(os.path.join(outside, "tree", "inner"))
+            for path in ("tree/a.txt", "tree/inner/b.txt",
+                         "tree/inner/deep/c.txt"):
+                with open(os.path.join(old, *path.split("/")), "wb") as f:
+                    f.write(b"interno")
+            sentinel = os.path.join(outside, "tree", "inner", "external.txt")
+            with open(sentinel, "wb") as f:
+                f.write(b"preserve-externo")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(cp.returncode, 0, cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(link.returncode, 0, link.stderr)
+                    try:
+                        remove_relative_tree(pinned, "tree")
+                        self.assertFalse(os.path.lexists(
+                            os.path.join(moved, "tree")))
+                        with open(sentinel, "rb") as f:
+                            self.assertEqual(f.read(), b"preserve-externo")
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_recursive_remove_refuses_nested_junction_and_limits(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            os.makedirs(os.path.join(root, "tree", "inner"))
+            os.makedirs(outside)
+            sentinel = os.path.join(outside, "secret")
+            with open(sentinel, "wb") as f:
+                f.write(b"external")
+            linkpath = os.path.join(root, "tree", "inner", "junction")
+            link = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", linkpath, outside],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if link.returncode:
+                self.skipTest("mklink /J indisponivel: %r" % link.stderr)
+            try:
+                with open_trusted_root(root) as trusted:
+                    with self.assertRaises(OSError):
+                        remove_relative_tree(trusted, "tree")
+                    with self.assertRaises(ValueError):
+                        remove_relative_tree(trusted, "tree", max_depth=0)
+                    with self.assertRaises(ValueError):
+                        remove_relative_tree(trusted, "tree", max_entries=0)
+                    with self.assertRaises(OSError):
+                        remove_relative_tree(trusted, "tree", max_depth=1)
+                with open(sentinel, "rb") as f:
+                    self.assertEqual(f.read(), b"external")
+            finally:
+                if os.path.lexists(linkpath):
+                    os.rmdir(linkpath)
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
