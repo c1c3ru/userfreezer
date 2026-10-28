@@ -55,3 +55,11 @@ mas NAO deve usar o mesmo target montado sem plano de integracao.
 
 O teste da unidade de kernel nao roda no GitHub Actions: CI executa
 somente verificacoes unitarias e mock de comandos mount.
+
+### Estados sem falso positivo
+
+A consulta `--status` devolve `active` apenas se o Linux informar uma
+montagem `overlay` nesse ponto. Um diretório normal que apenas existe
+agora é `inactive`, e não `configured`; um alvo inexistente é `error`.
+Mesmo `active` não comprova reinicialização, descarte de dados ou
+persistência de exclusões: esses testes continuam obrigatórios na VM.
