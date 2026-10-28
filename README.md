@@ -149,6 +149,12 @@ with DeepFreezer(r"C:\app") as df:   # ou "/opt/app"
     df.thaw(commit=False)            # "desligar": volta ao estado congelado
 ```
 
+**Proteção opcional do kernel no Linux:** o script
+`packaging/linux/overlayfs_session.py` pode montar um OverlayFS em
+diretórios autorizados com alterações desviadas para tmpfs. **Não é
+habilitado automaticamente, não protege a raiz do SO** e deve ser
+validado em VM antes do uso. Veja `docs/LINUX_OVERLAYFS_VM.md`.
+
 **Limite honesto:** o freezer é *application-level* — protege a árvore
 contra mudanças feitas por quem passa pela API/CLI. Um `sed -i`
 externo direto no arquivo ainda mexe no disco de verdade. Congelar o
