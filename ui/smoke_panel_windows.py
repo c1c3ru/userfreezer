@@ -57,7 +57,7 @@ class WindowsPanelSmokeTests(unittest.TestCase):
                 self.assertEqual(len(rows), 2)
                 self.assertEqual(
                     panel.table.set(rows[0], "target"), r"C:\\LAB_A")
-                self.assertIn("D:\\CUSTOM_A.dfz",
+                self.assertIn(snapshot["targets"][0]["overlay"],
                               panel.table.set(rows[0], "overlay"))
                 self.assertIn("unverified",
                               panel.table.set(rows[0], "os_level"))
