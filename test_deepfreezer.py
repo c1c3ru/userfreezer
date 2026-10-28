@@ -416,7 +416,7 @@ class CommitPathIsolationTests(BaseCase):
         df = self.frozen_df()
         for bad in ("C:/Windows/teste", "../fora", r"sub\\..\\fora",
                     r"\\\\servidor\\share", "/tmp/fora",
-                    "sub//dupla", "sub/./rel", "a\\x00b"):
+                    "sub//dupla", "sub/./rel", "a\x00b"):
             with self.subTest(bad=repr(bad)):
                 with self.assertRaises(DeepFreezeError):
                     df._commit_parts(bad)
