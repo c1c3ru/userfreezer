@@ -59,6 +59,12 @@ jobs:
 
       - name: Rodar a suite de testes
         run: python run_tests.py -v
+      - name: Verificar prova de reboot no VM probe (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/os_level/test_vm_probe_no_reboot.ps1
+
 
   linux-kernel-overlayfs:
     name: smoke real OverlayFS kernel (diretorio descartavel)
