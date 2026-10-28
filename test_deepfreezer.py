@@ -516,7 +516,11 @@ class JournalRecoveryTests(BaseCase):
         self.append_journal(
             overlay, json.dumps({"seq": 100, "op": "W", "p": "tarde.txt",
                                  "d": 0}).encode() + b"\n")
-        with open(os.path.join(overlay, "files", "tarde.txt"), "wb") as f:
+        # Desde os payloads versionados (#46), files/ (formato legado)
+        # pode nao existir. Criar o fixture explicitamente.
+        legacy_files = os.path.join(overlay, "files")
+        os.makedirs(legacy_files, exist_ok=True)
+        with open(os.path.join(legacy_files, "tarde.txt"), "wb") as f:
             f.write(b"tarde demais")
 
         df2 = self.open_df()
