@@ -4,6 +4,56 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.13
+
+**Release intermediária para validação da consolidação v0.2.0.**
+Esta versão não fecha as issues #63, #49, #54 e #56. A compilação do
+executável Windows 7 usa Python 3.8 no runner moderno; o comportamento
+no Windows 7 SP1 real ainda exige teste manual do mantenedor.
+
+### Segurança Windows e engenharia de handles (#63)
+
+- PRs #100, #101 e #103: provas com handles NT relativos de criação
+  de diretórios, exclusão de arquivo, renomeação/substituição e
+  remoção de diretório vazio sob troca por junction.
+- PRs #105 e #106: enumeração e exclusão recursiva com handles NT,
+  limites de profundidade/entradas e recusa de reparse points.
+- PR #108: protótipo `nt_commit_experimental.py` executa plano
+  end-to-end (W/M/F/D) sem pathname fallback, em módulo isolado, e
+  relata falhas parciais sem alegar rollback.
+- PR #109: 12 rodadas verificáveis de troca de diretório/junction
+  executadas em outro processo, com sentinela externa preservada.
+
+**AVISO:** `thaw --commit` com operações pendentes no Windows
+**permanece desabilitado por segurança**. O protótipo não é chamado
+pelo core, IPC nem pela UI. Para reativar, ainda faltam raiz confiável,
+validação de ACL/UNC, auditoria, stress mais amplo e Windows 7 SP1
+real, antes de garantir ausência de TOCTOU.
+
+### Linux OS-level por diretório (#49)
+
+- PR #102: `deepfreezer-overlayfs@.service` incluída no .deb,
+  **DESABILITADA por padrão**. O administrador deve optar
+  explicitamente, inicialmente apenas em VM.
+- PR #104: exige ancestrais e alvo root-owned e sem escrita insegura,
+  salvo `/tmp` root-owned com sticky bit; evita sobreposição com
+  targets do daemon application-level.
+- Continua limitado a diretórios permitidos. **Não protege `/` nem
+  intercepta gravações anteriores à ativação da unit.** Reboot e
+  recuperação de VM não foram comprovados.
+
+### Testes e documentação
+
+- Linux: testes unitários, montagem kernel OverlayFS real e teste da UI
+  Tk/Xvfb.
+- Windows: Python 3.8/3.12, Named Pipe/serviço, interface Tk e
+  testes de segurança nativos. Isso não equivale a Win7 SP1 real.
+- Documentação central de conclusão:
+  `docs/STATUS_CONSOLIDACAO_V020.md`; roteiro de VM:
+  `docs/WIN7_MANUAL_TEST.md`.
+- #54 (UWF/EWF/VHDX em VM) e #56 (GUI/UAC Win7) continuam
+  pendentes de evidências. Nenhum filtro ou boot é alterado no CI.
+
 ## v0.1.12
 
 **Correção de segurança com alteração intencional de comportamento no
