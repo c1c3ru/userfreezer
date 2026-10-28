@@ -495,3 +495,46 @@ def list_relative_directory(directory, limit=10000):
                 raise OSError("offset NT de enumeracao invalido")
             offset += next_offset
     return result
+
+
+def remove_relative_tree(parent, name, max_entries=10000, max_depth=64):
+    """EXPERIMENTAL: rmtree SOMENTE por handles relativos do kernel NT.
+
+    Nao utiliza os.path.join/paths de destino apos fixar o handle do
+    pai. Recusa junction/symlink/reparse, em qualquer nivel. Se outro
+    processo mudar a arvore durante a limpeza, falha sem seguir links,
+    mas pode ter removido parte de arquivos legitimos: NAO e' uma
+    transacao e ainda nao faz parte do commit Windows.
+    """
+    _validate_component(name)
+    if not isinstance(max_entries, int) or not 1 <= max_entries <= 100000:
+        raise ValueError("max_entries invalido")
+    if not isinstance(max_depth, int) or not 1 <= max_depth <= 128:
+        raise ValueError("max_depth invalido")
+    budget = [max_entries]
+
+    def descend(directory, child_name, depth):
+        if depth >= max_depth:
+            raise OSError("profundidade maxima da arvore NT excedida")
+        if budget[0] <= 0:
+            raise OSError("limite total de entradas excedido")
+        # Mantemos o handle aberto durante cada acesso, e abrimos cada
+        # filho relativamente a ele. Nunca pegamos um caminho reparse.
+        with open_relative_directory(directory, child_name) as child:
+            entries = list_relative_directory(
+                child, limit=min(10000, budget[0]))
+            budget[0] -= len(entries)
+            for entry in entries:
+                try:
+                    delete_relative_file(child, entry)
+                except OSError:
+                    # Somente pasta real pode ser percorrida: caso seja
+                    # junction, link ou falha de ACL, open_relative_directory
+                    # tambem recusara e propagara o erro.
+                    descend(child, entry, depth + 1)
+        # Fecha o handle de enumeracao antes de remover a pasta vazia.
+        # Se houve troca por junction, remove_relative_empty_directory
+        # falha fechado sem seguir reparse.
+        remove_relative_empty_directory(directory, child_name)
+
+    descend(parent, name, 0)
