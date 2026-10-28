@@ -511,6 +511,16 @@ class DeepFreezer(object):
                 raise
 
     def _apply_commit(self):
+        # Seguranca fail-closed: o teste concorrente Windows do PR #84
+        # provou rename de ancestral mesmo com handles abertos sem
+        # FILE_SHARE_DELETE. Pathname-based operations nao sao seguras
+        # contra um escritor nao confiavel concorrente. Nao descartar
+        # journal ou alterar o disco nessa situacao.
+        if os.name == "nt" and self.ops:
+            raise DeepFreezeError(
+                "commit Windows desabilitado por seguranca (#63): "
+                "isolamento contra troca concorrente de diretorios "
+                "nao comprovado; use thaw sem commit para descartar")
         ordered = sorted(self.ops.items(), key=lambda kv: kv[1][0])
         prepared = []
         for rel, (seq, kind, directory) in ordered:

@@ -81,3 +81,13 @@ instalação do serviço em Program Files.
 Os testes automáticos de protocolo e peer credentials não substituem
 os testes de ACL e usabilidade em sessão real. Consulte
 `docs/IPC_SECURITY_DESIGN.md` e a issue #53.
+
+## Bloqueio de segurança para commit no Windows (após v0.1.11)
+
+O teste concorrente no PR #84 demonstrou renomeação de diretório
+apesar dos handles Win32 abertos. Para evitar escape da árvore alvo,
+`thaw(commit=True)` com operações pendentes **falha sem modificar o disco
+nem descartar o overlay** até existir um backend com semântica comprovada.
+`thaw(commit=False)` continua disponível. O painel mostra a restrição
+antes de oferecer qualquer autorização UAC. Linux mantém commit POSIX
+baseado em `dir_fd`/`O_NOFOLLOW`. A #63 permanece aberta.

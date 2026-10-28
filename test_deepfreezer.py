@@ -570,6 +570,7 @@ class CommitPathIsolationTests(BaseCase):
                 os.rmdir(link)
 
     @unittest.skipUnless(os.name == "nt", "Windows NTFS")
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_e_exclusao_recursiva_sem_junction(self):
         """Backend Win32 por handles mantem operacoes normais."""
         df = self.frozen_df()
@@ -581,6 +582,21 @@ class CommitPathIsolationTests(BaseCase):
         df.remove("nova")
         df.thaw(commit=True)
         self.assertFalse(os.path.exists(os.path.join(self.target, "nova")))
+
+    @unittest.skipUnless(os.name == "nt", "fail-closed Win32")
+    def test_commit_windows_bloqueia_mudancas_sem_apagar_journal(self):
+        df = self.frozen_df()
+        df.write("a.txt", b"nao aplicar")
+        df.remove("sub")
+        with self.assertRaisesRegex(DeepFreezeError, "commit Windows desabilitado"):
+            df.thaw(commit=True)
+        self.assertTrue(df.frozen)
+        self.assertEqual(df.read("a.txt"), b"nao aplicar")
+        self.assertFalse(os.path.lexists(df.overlay + ".discarding"))
+        self.assertDiskIntact()
+        # Descarte segue disponivel no Windows.
+        df.thaw(commit=False)
+        self.assertDiskIntact()
 
     def test_commit_rejeita_traversal_injetado_no_journal(self):
         df = self.frozen_df()
@@ -616,6 +632,7 @@ class CommitPathIsolationTests(BaseCase):
             open(os.path.join(self.target, "a.txt"), "rb").read(), self.TREE["a.txt"])
 
 class ThawCommitTests(BaseCase):
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_aplica_write_mkdirs_e_remove_no_disco(self):
         df = self.frozen_df()
         df.write("a.txt", b"mudou")
@@ -639,6 +656,7 @@ class ThawCommitTests(BaseCase):
         self.assertFalse(os.path.exists(overlay))
         self.assertFalse(df.frozen)
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_respeita_a_ordem_das_operacoes(self):
         df = self.frozen_df()
         df.write("a.txt", b"primeiro")
@@ -650,6 +668,7 @@ class ThawCommitTests(BaseCase):
         self.assertNotIn("a.txt", disco)
         self.assertEqual(disco["b.bin"], b"depois")
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_de_remove_seguido_de_write_mantem_o_arquivo(self):
         df = self.frozen_df()
         df.remove("a.txt")
@@ -663,6 +682,7 @@ class ThawCommitTests(BaseCase):
         df.thaw(commit=True)
         self.assertDiskIntact()
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_freeze_de_novo_depois_do_commit(self):
         df = self.frozen_df()
         df.write("a.txt", b"v2")
@@ -713,6 +733,7 @@ class JournalRecoveryTests(BaseCase):
         df2.thaw()
         self.assertDiskIntact()
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_reabrir_e_commit_aplica_o_que_estava_no_journal(self):
         df = self.frozen_df()
         df.write("a.txt", b"mudou")
