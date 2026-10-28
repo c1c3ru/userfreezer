@@ -16,6 +16,9 @@ from ctypes import wintypes
 import os
 
 FILE_READ_ATTRIBUTES = 0x80
+FILE_LIST_DIRECTORY = 0x1
+FILE_NAMES_INFORMATION_CLASS = 12
+STATUS_NO_MORE_FILES = 0x80000006
 FILE_TRAVERSE = 0x20
 FILE_ADD_FILE = 0x2
 FILE_ADD_SUBDIRECTORY = 0x4
@@ -116,6 +119,12 @@ def _dlls():
         wintypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
         wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG]
     nt.NtCreateFile.restype = wintypes.LONG
+    nt.NtQueryDirectoryFile.argtypes = [
+        wintypes.HANDLE, wintypes.HANDLE, wintypes.LPVOID, wintypes.LPVOID,
+        ctypes.POINTER(_IO_STATUS_BLOCK), wintypes.LPVOID, wintypes.ULONG,
+        ctypes.c_int, ctypes.c_ubyte, ctypes.POINTER(_UNICODE_STRING),
+        ctypes.c_ubyte]
+    nt.NtQueryDirectoryFile.restype = wintypes.LONG
     nt.NtSetInformationFile.argtypes = [
         wintypes.HANDLE, ctypes.POINTER(_IO_STATUS_BLOCK),
         wintypes.LPVOID, wintypes.ULONG, ctypes.c_int]
@@ -151,8 +160,8 @@ def open_trusted_root(root):
     if not os.path.isabs(root):
         raise ValueError("raiz precisa ser absoluta")
     handle = kernel.CreateFileW(
-        root, FILE_TRAVERSE | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY |
-        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        root, FILE_TRAVERSE | FILE_LIST_DIRECTORY | FILE_ADD_FILE |
+        FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         None, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
@@ -181,8 +190,8 @@ def open_relative_directory(parent, name):
     handle = wintypes.HANDLE()
     status = nt.NtCreateFile(
         ctypes.byref(handle),
-        FILE_READ_ATTRIBUTES | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY |
-        FILE_TRAVERSE | SYNCHRONIZE,
+        FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | FILE_ADD_FILE |
+        FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | SYNCHRONIZE,
         ctypes.byref(attrs), ctypes.byref(io), None, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         FILE_OPEN,
@@ -434,3 +443,55 @@ def remove_relative_empty_directory(parent, name):
             raise ctypes.WinError()
     finally:
         kernel.CloseHandle(handle)
+
+
+def list_relative_directory(directory, limit=10000):
+    """EXPERIMENTAL: enumera apenas filhos do HANDLE via NtQueryDirectoryFile.
+
+    Nomes retornados sao dados nao confiaveis, nunca path para abrir
+    diretamente. Valida component, ignora . e .., e limita a quantidade
+    para nao ter processamento infinito numa arvore adversarial.
+    """
+    if not isinstance(limit, int) or limit < 1 or limit > 100000:
+        raise ValueError("limite de enumeracao invalido")
+    _, nt = _dlls()
+    result = []
+    restart = 1
+    while True:
+        buffer = ctypes.create_string_buffer(65536)
+        io = _IO_STATUS_BLOCK()
+        status = nt.NtQueryDirectoryFile(
+            directory, None, None, None, ctypes.byref(io),
+            buffer, len(buffer), FILE_NAMES_INFORMATION_CLASS, 0, None,
+            restart)
+        restart = 0
+        if (status & 0xffffffff) == STATUS_NO_MORE_FILES:
+            break
+        if status < 0:
+            raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+        used = int(io.Information)
+        if used <= 0 or used > len(buffer):
+            raise OSError("NtQueryDirectoryFile retornou comprimento invalido")
+        offset = 0
+        while True:
+            if offset + 12 > used:
+                raise OSError("registro de diretorio NT truncado")
+            next_offset = ctypes.c_uint32.from_buffer_copy(buffer, offset).value
+            name_length = ctypes.c_uint32.from_buffer_copy(
+                buffer, offset + 8).value
+            if (name_length % 2 or name_length == 0 or
+                    offset + 12 + name_length > used):
+                raise OSError("nome invalido na enumeracao NT")
+            name = buffer.raw[offset + 12:offset + 12 + name_length].decode(
+                "utf-16-le", "strict")
+            if name not in (".", ".."):
+                _validate_component(name)
+                result.append(name)
+                if len(result) > limit:
+                    raise OSError("limite de entradas excedido")
+            if next_offset == 0:
+                break
+            if next_offset < 12 or offset + next_offset >= used:
+                raise OSError("offset NT de enumeracao invalido")
+            offset += next_offset
+    return result
