@@ -49,11 +49,20 @@ O broker **autoriza cada ação** pelo SO:
   do serviço um nonce de **uso único**, válido por 30 segundos e
   vinculado ao peer, alvo e operação. Não reutilizar o token.
 
-**A interface não eleva privilégios automaticamente.** Em ambiente
-com usuários comuns, o administrador deve aprovar via procedimento
-controlado pelo sistema operacional. Até integração com um agente
-de elevação/UAC/polkit, ações de usuários sem token apropriado são
-negadas com erro explícito.
+**Elevação pelo SO (nunca pela senha armazenada na UI):**
+o painel invoca UAC (`runas`) no Windows para executar somente o
+`C:\\Program Files\\DeepFreezer\\deepfreezer_service.exe --admin-cli`,
+arquivo instalado sob ACL administrativa. Em Linux, pode solicitar
+polkit/`pkexec` para executar SOMENTE o helper instalado e verificado
+como root-owned `/opt/deepfreezer/admin_client.py`.
+Ambos usam nonce vinculado ao mesmo processo autenticado para
+`discard` e `commit`. Quando UAC/polkit falta, a UI falha fechada.
+**Jamais executar scripts do repositório editável do usuário como root**.
+
+O usuário comum pode abrir painel e consultar status; para modificar um
+alvo recebe um prompt de autorização do próprio SO, sem elevar todo o
+processo gráfico. Sua VM Windows 7 deverá validar o prompt UAC e a
+instalação do serviço em Program Files.
 
 ## Testes manuais
 
