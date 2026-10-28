@@ -44,54 +44,85 @@ class DeepFreezeError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Lock de instancia unica (atomic create; staleness por timestamp)
+# Lock de instancia unica (travamento pelo SO; liberacao apos crash)
 # ---------------------------------------------------------------------------
 class _Lock(object):
+    """Trava um byte do arquivo LOCK; o kernel solta a trava se o processo cair.
+
+    Nao remove o arquivo no release: apagar um arquivo de lock cria uma
+    corrida entre processos que abriram inodes/handles diferentes. O proprio
+    thaw remove o arquivo junto com o overlay, apos fechar o handle.
+    Suporta Python 3.8/Windows 7 (msvcrt) e Linux (fcntl), sem dependencias.
+    """
+
     def __init__(self, path, timeout=10.0):
         self.path = _long(path)
         self.timeout = timeout
         self.fd = None
 
+    @staticmethod
+    def _os_lock(fd):
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    @staticmethod
+    def _os_unlock(fd):
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
     def acquire(self):
-        st = time.time()
-        while True:
-            try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            except FileExistsError:
+        if self.fd is not None:
+            raise DeepFreezeError("lock ja adquirido nesta instancia")
+        # O arquivo continua existindo entre sessoes: sua idade nao define
+        # se a trava esta ocupada. Nao trunca antes de adquirir o lock.
+        fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b" ")
+            start = time.monotonic()
+            while True:
                 try:
-                    with open(self.path, "rb") as f:
-                        meta = json.loads(f.read() or b"{}")
-                    if time.time() - float(meta.get("ts", 0)) > 86400:
-                        try:
-                            os.remove(self.path)
-                        except OSError:
-                            pass
-                        continue
-                except (ValueError, OSError):
-                    pass
-                if time.time() - st > self.timeout:
-                    raise DeepFreezeError(
-                        "overlay bloqueado por outra instancia (ou lock stale antigo)")
-                time.sleep(0.1)
-            else:
-                os.write(fd, json.dumps({"pid": os.getpid(), "ts": time.time()}).encode())
-                os.fsync(fd)
-                self.fd = fd
-                return
+                    self._os_lock(fd)
+                    break
+                except OSError as exc:
+                    if time.monotonic() - start >= self.timeout:
+                        raise DeepFreezeError(
+                            "overlay bloqueado por outra instancia (timeout)") from exc
+                    time.sleep(0.1)
+            self.fd = fd
+            payload = json.dumps({"pid": os.getpid(), "ts": time.time()}).encode("utf-8")
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.write(fd, payload)
+            os.ftruncate(fd, len(payload))
+            os.fsync(fd)
+        except BaseException:
+            if self.fd == fd:
+                self.fd = None
+            os.close(fd)
+            raise
 
     def release(self):
-        if self.fd is not None:
-            try:
-                os.close(self.fd)
-            except OSError:
-                pass
-            self.fd = None
-            try:
-                os.remove(self.path)
-            except OSError:
-                pass
+        if self.fd is None:
+            return
+        fd = self.fd
+        self.fd = None
+        try:
+            self._os_unlock(fd)
+        finally:
+            os.close(fd)
 
 
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Nucleo
 # ---------------------------------------------------------------------------
@@ -111,6 +142,7 @@ class DeepFreezer(object):
         self.frozen = False
         self.manifest = None
         self.ops = {}      # rel -> (seq, kind 'W'|'M'|'D', d: 0=arquivo 1=dir)
+        self._write_payloads = {}  # rel -> ID imutavel de escrita confirmada
         self._seq = 0
         self._lock = _Lock(os.path.join(self.overlay, "LOCK"), lock_timeout)
         self._open()
@@ -119,12 +151,16 @@ class DeepFreezer(object):
     def _open(self):
         if os.path.isdir(self.overlay):
             self._lock.acquire()
-            man = self._jread(os.path.join(self.overlay, "manifest.json"))
-            if man is None:
-                raise DeepFreezeError("overlay existe sem manifest (corrompido?)")
-            self.manifest = man
-            self.frozen = True
-            self._load_journal()
+            try:
+                man = self._jread(os.path.join(self.overlay, "manifest.json"))
+                if man is None:
+                    raise DeepFreezeError("overlay existe sem manifest (corrompido?)")
+                self.manifest = man
+                self.frozen = True
+                self._load_journal()
+            except BaseException:
+                self._lock.release()
+                raise
         elif os.path.exists(self.overlay):
             raise DeepFreezeError("caminho do overlay ja existe (nao eh dir)")
 
@@ -147,15 +183,30 @@ class DeepFreezer(object):
                         continue
                     cur = self.ops.get(key)
                     if cur is None or int(rec.get("seq", 0)) >= cur[0]:
-                        self.ops[key] = (int(rec["seq"]), rec["op"], int(rec.get("d", 0)))
-        # valida payloads (crash entre etapas => op irrealizavel e' descartada)
+                        kind = rec["op"]
+                        self.ops[key] = (int(rec["seq"]), kind, int(rec.get("d", 0)))
+                        # Journals anteriores nao possuem campo "src": continuar
+                        # lendo payloads legados em files/<rel>.
+                        src = rec.get("src")
+                        if kind == "W" and src is not None:
+                            if not (isinstance(src, str) and src.isdigit()
+                                    and len(src) <= 32):
+                                raise DeepFreezeError("ID de payload invalido no journal")
+                            self._write_payloads[key] = src
+                        else:
+                            self._write_payloads.pop(key, None)
+        # valida payloads confirmados: ignorar registro sem conteudo.
         dead = []
         for rel, (s, k, d) in self.ops.items():
-            p = os.path.join(self.overlay, KIND_SUBDIR[k], *rel.split("/"))
+            if k not in KIND_SUBDIR:
+                raise DeepFreezeError("operacao invalida no journal: %r" % k)
+            p = self._payload_path(rel) if k == "W" else os.path.join(
+                self.overlay, KIND_SUBDIR[k], *rel.split("/"))
             if not os.path.isfile(p):
                 dead.append(rel)
         for rel in dead:
             self.ops.pop(rel)
+            self._write_payloads.pop(rel, None)
         self._seq = best_seq
 
     def freeze(self):
@@ -189,6 +240,7 @@ class DeepFreezer(object):
         self.manifest = man
         self.frozen = True
         self.ops = {}
+        self._write_payloads = {}
         self._seq = 0
         return {"seconds": round(time.time() - t0, 3), "paths": len(entries)}
 
@@ -204,6 +256,7 @@ class DeepFreezer(object):
         self.frozen = False
         self.manifest = None
         self.ops = {}
+        self._write_payloads = {}
         self._seq = 0
 
     def close(self):
@@ -221,7 +274,7 @@ class DeepFreezer(object):
             dst = _long(os.path.join(self.target, *rel.split("/")))
             if k == "W":
                 os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
-                src = os.path.join(self.overlay, "files", *rel.split("/"))
+                src = self._payload_path(rel)
                 with open(src, "rb") as fin, open(dst, "wb") as fout:
                     shutil.copyfileobj(fin, fout)
                     fout.flush()
@@ -277,8 +330,19 @@ class DeepFreezer(object):
             raise DeepFreezeError("caminho relativo invalido: %r" % rel)
         return parts
 
-    def _put_payload(self, kind, rel, data=b""):
-        dst = os.path.join(self.overlay, KIND_SUBDIR[kind], *rel.split("/"))
+    def _payload_path(self, rel):
+        payload_id = self._write_payloads.get(rel)
+        if payload_id is not None:
+            return os.path.join(self.overlay, "payloads", payload_id)
+        return os.path.join(self.overlay, "files", *rel.split("/"))
+
+    def _put_payload(self, kind, rel, data=b"", payload_id=None):
+        if payload_id is not None:
+            if kind != "W":
+                raise DeepFreezeError("somente escrita usa payload versionado")
+            dst = os.path.join(self.overlay, "payloads", payload_id)
+        else:
+            dst = os.path.join(self.overlay, KIND_SUBDIR[kind], *rel.split("/"))
         os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
         tmp = dst + ".tmp%d" % os.getpid()
         with open(_long(tmp), "wb") as f:
@@ -286,10 +350,21 @@ class DeepFreezer(object):
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, dst)
+        # Assegura persistencia do nome do payload antes do journal
+        # nos sistemas POSIX que aceitam fsync em diretorios.
+        if os.name != "nt":
+            dfd = os.open(os.path.dirname(dst), os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
 
-    def _journal(self, op, rel, d=0):
+    def _journal(self, op, rel, d=0, payload_id=None):
         self._seq += 1
-        line = json.dumps({"seq": self._seq, "op": op, "p": rel, "d": d}) + "\n"
+        rec = {"seq": self._seq, "op": op, "p": rel, "d": d}
+        if payload_id is not None:
+            rec["src"] = payload_id
+        line = json.dumps(rec) + "\n"
         jp = os.path.join(self.overlay, "journal.log")
         with open(_long(jp), "ab") as f:
             f.write(line.encode())
@@ -337,10 +412,14 @@ class DeepFreezer(object):
         if not parts:
             raise DeepFreezeError("caminho relativo invalido: %r" % rel)
         key = "/".join(parts)
+        # Payload por operacao: uma escrita ainda nao confirmada nao pode
+        # sobrescrever o payload da ultima escrita confirmada (issue #46).
+        payload_id = "%016d" % (self._seq + 1)
         self._put_payload("W", key, data if isinstance(data, (bytes, bytearray))
-                          else str(data).encode())
-        self._journal("W", key)
+                          else str(data).encode(), payload_id=payload_id)
+        self._journal("W", key, payload_id=payload_id)
         self.ops[key] = (self._seq, "W", 0)
+        self._write_payloads[key] = payload_id
 
     def read(self, rel):
         self._require_frozen()
@@ -348,7 +427,7 @@ class DeepFreezer(object):
         c = self._classify(parts)
         key = "/".join(parts)
         if c == "NEW":
-            with open(os.path.join(self.overlay, "files", *parts), "rb") as f:
+            with open(self._payload_path(key), "rb") as f:
                 return f.read()
         if c == "BASE":
             p = _long(os.path.join(self.target, *parts))
@@ -408,7 +487,7 @@ class DeepFreezer(object):
         parts = self._norm(rel)
         c = self._classify(parts)
         if c == "NEW":
-            return os.path.getsize(os.path.join(self.overlay, "files", *parts))
+            return os.path.getsize(self._payload_path("/".join(parts)))
         return os.stat(_long(os.path.join(self.target, *parts))).st_size
 
     def iterdir(self, rel=""):

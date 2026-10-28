@@ -16,6 +16,7 @@ Uso: python3 test_deepfreezer.py
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -356,8 +357,8 @@ class ThawDiscardTests(BaseCase):
 
         self.assertFalse(visto["fd_aberto"],
                          "LOCK ainda aberto no rmtree: quebra no Windows")
-        self.assertFalse(visto["lock_em_disco"],
-                         "LOCK ainda em disco no rmtree: quebra no Windows")
+        self.assertTrue(visto["lock_em_disco"],
+                        "LOCK deve persistir entre releases, ate a remocao do overlay")
         self.assertFalse(os.path.exists(df.overlay))
 
     def test_thaw_sem_freeze_e_erro(self):
@@ -537,6 +538,42 @@ class JournalRecoveryTests(BaseCase):
         self.assertFalse(df2.exists("orfao.txt"))
         self.assertEqual(df2.read("bom.txt"), b"ok")
 
+    def test_crash_em_sobrescrita_preserva_ultima_versao_confirmada(self):
+        df = self.frozen_df()
+        df.write("a.txt", b"versao-confirmada")
+        seq = df.status()["pending_seq"]
+
+        def falhar_antes_do_journal(*args, **kwargs):
+            raise OSError("falha injetada no journal")
+
+        df._journal = falhar_antes_do_journal
+        with self.assertRaises(OSError):
+            df.write("a.txt", b"versao-nao-confirmada")
+        self.assertEqual(df.status()["pending_seq"], seq)
+        df.close()
+
+        reaberto = self.open_df()
+        self.assertEqual(reaberto.read("a.txt"), b"versao-confirmada")
+        self.assertEqual(reaberto.status()["pending_seq"], seq)
+        reaberto.write("a.txt", b"nova-confirmada")
+        self.assertEqual(reaberto.read("a.txt"), b"nova-confirmada")
+
+    def test_compatibilidade_com_journal_legado_sem_src(self):
+        df = self.frozen_df()
+        overlay = df.overlay
+        df.close()
+        legacy = os.path.join(overlay, "files", "a.txt")
+        os.makedirs(os.path.dirname(legacy), exist_ok=True)
+        with open(legacy, "wb") as f:
+            f.write(b"formato-legado")
+        self.append_journal(
+            overlay, json.dumps({"seq": 1, "op": "W", "p": "a.txt",
+                                 "d": 0}).encode() + b"\n")
+        reaberto = self.open_df()
+        self.assertEqual(reaberto.read("a.txt"), b"formato-legado")
+        reaberto.write("a.txt", b"formato-novo")
+        self.assertEqual(reaberto.read("a.txt"), b"formato-novo")
+
     def test_payload_sem_linha_no_journal_e_ignorado(self):
         """Crash entre o payload e a linha: journal e' a fonte da verdade."""
         df = self.frozen_df()
@@ -557,6 +594,21 @@ class JournalRecoveryTests(BaseCase):
         os.remove(os.path.join(overlay, "manifest.json"))
         with self.assertRaises(DeepFreezeError):
             DeepFreezer(self.target)
+
+    def test_lock_recente_de_processo_encerrado_abruptamente(self):
+        """Lock do SO deve ser liberado imediatamente se o filho morrer."""
+        df = self.frozen_df()
+        df.close()
+        script = (
+            "import os, sys; sys.path.insert(0, %r); "
+            "from deepfreezer import DeepFreezer; "
+            "df = DeepFreezer(%r); os._exit(0)"
+        ) % (os.path.dirname(os.path.abspath(__file__)), self.target)
+        subprocess.check_call([sys.executable, "-c", script])
+        # O LOCK persiste em disco, mas nao esta mais adquirido.
+        self.assertTrue(os.path.isfile(os.path.join(df.overlay, "LOCK")))
+        reaberto = self.open_df(lock_timeout=0.2)
+        self.assertTrue(reaberto.frozen)
 
     def test_lock_remanescente_de_um_crash_nao_trava_para_sempre(self):
         df = self.frozen_df()
