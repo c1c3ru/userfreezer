@@ -412,6 +412,15 @@ class CommitPathIsolationTests(BaseCase):
             df.thaw(commit=True)
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "escapou.txt")))
 
+    def test_commit_rejeita_paths_ambiguous_em_qualquer_so(self):
+        df = self.frozen_df()
+        for bad in ("C:/Windows/teste", "../fora", r"sub\\..\\fora",
+                    r"\\\\servidor\\share", "/tmp/fora",
+                    "sub//dupla", "sub/./rel", "a\\x00b"):
+            with self.subTest(bad=repr(bad)):
+                with self.assertRaises(DeepFreezeError):
+                    df._commit_parts(bad)
+
     def test_commit_preflight_evitar_aplicacao_parcial(self):
         outside = os.path.join(self.tmp, "fora")
         os.makedirs(outside)
