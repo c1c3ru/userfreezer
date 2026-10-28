@@ -7,7 +7,8 @@ import tempfile
 import unittest
 
 from win32_relative_directory import (
-    directory_identity, open_relative_directory, open_trusted_root)
+    directory_identity, open_relative_directory, open_trusted_root,
+    create_relative_file)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -68,6 +69,50 @@ class NativeRelativeOpenProof(unittest.TestCase):
                     finally:
                         if os.path.lexists(old):
                             os.rmdir(old)
+
+    def test_create_relative_file_fica_na_arvore_original_apos_junction_swap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            os.makedirs(os.path.join(root, "sub"))
+            os.makedirs(outside)
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if cp.returncode:
+                        self.skipTest("rename indisponivel: %r" % cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if link.returncode:
+                        self.skipTest("junction indisponivel: %r" % link.stderr)
+                    try:
+                        payload = b"gravacao vinculada ao handle" * 70000
+                        self.assertEqual(
+                            create_relative_file(pinned, "novo.txt", payload),
+                            len(payload))
+                        with open(os.path.join(moved, "novo.txt"), "rb") as fin:
+                            self.assertEqual(fin.read(), payload)
+                        self.assertFalse(os.path.exists(
+                            os.path.join(outside, "novo.txt")))
+                        with self.assertRaises(OSError):
+                            create_relative_file(pinned, "novo.txt", b"overwrite")
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_create_relative_file_rejeita_componentes_inseguros(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with open_trusted_root(temp) as root:
+                for name in ("..", "x/y", "x\\\\y", "evil:ads", "", "a."):
+                    with self.subTest(name=name):
+                        with self.assertRaises(ValueError):
+                            create_relative_file(root, name, b"a")
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
