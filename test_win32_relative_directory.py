@@ -9,7 +9,7 @@ import unittest
 from win32_relative_directory import (
     directory_identity, open_relative_directory, open_trusted_root,
     create_relative_file, create_relative_directory, delete_relative_file,
-    rename_relative_file)
+    rename_relative_file, remove_relative_empty_directory)
 
 
 @unittest.skipUnless(os.name == "nt", "NtCreateFile so Windows")
@@ -240,6 +240,66 @@ class NativeRelativeOpenProof(unittest.TestCase):
                             rename_relative_file(parent, "safe.txt", invalid)
                 with self.assertRaises(ValueError):
                     rename_relative_file(parent, "Same.txt", "same.TXT")
+
+    def test_rmdir_empty_relative_stays_original_under_junction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = os.path.join(temp, "root")
+            outside = os.path.join(temp, "outside")
+            old = os.path.join(root, "sub")
+            moved = os.path.join(root, "moved")
+            os.makedirs(os.path.join(old, "empty"))
+            os.makedirs(os.path.join(outside, "empty"))
+            with open(os.path.join(outside, "empty", "sentinel.txt"), "wb") as f:
+                f.write(b"outside preserved")
+            with open_trusted_root(root) as trusted:
+                with open_relative_directory(trusted, "sub") as pinned:
+                    cp = subprocess.run(
+                        [__import__("sys").executable, "-c",
+                         "import os,sys; os.rename(sys.argv[1],sys.argv[2])",
+                         old, moved], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(cp.returncode, 0, cp.stderr)
+                    link = subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", old, outside],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(link.returncode, 0, link.stderr)
+                    try:
+                        remove_relative_empty_directory(pinned, "empty")
+                        self.assertFalse(os.path.lexists(
+                            os.path.join(moved, "empty")))
+                        with open(os.path.join(outside, "empty", "sentinel.txt"), "rb") as f:
+                            self.assertEqual(f.read(), b"outside preserved")
+                    finally:
+                        if os.path.lexists(old):
+                            os.rmdir(old)
+
+    def test_rmdir_rejects_nonempty_directory_and_junction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            os.mkdir(os.path.join(temp, "notempty"))
+            with open(os.path.join(temp, "notempty", "x.txt"), "wb") as f:
+                f.write(b"x")
+            os.mkdir(os.path.join(temp, "external"))
+            junction = os.path.join(temp, "junction")
+            link = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", junction,
+                 os.path.join(temp, "external")],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if link.returncode:
+                self.skipTest("junction indisponivel: %r" % link.stderr)
+            try:
+                with open_trusted_root(temp) as parent:
+                    with self.assertRaises(OSError):
+                        remove_relative_empty_directory(parent, "notempty")
+                    with self.assertRaises(OSError):
+                        remove_relative_empty_directory(parent, "junction")
+                    for invalid in ("..", "folder/x", "evil:stream", ""):
+                        with self.assertRaises(ValueError):
+                            remove_relative_empty_directory(parent, invalid)
+                self.assertTrue(os.path.exists(
+                    os.path.join(temp, "notempty", "x.txt")))
+                self.assertTrue(os.path.isdir(os.path.join(temp, "external")))
+            finally:
+                if os.path.lexists(junction):
+                    os.rmdir(junction)
 
     def test_component_rejects_relative_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
