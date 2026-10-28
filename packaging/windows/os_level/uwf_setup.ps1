@@ -42,6 +42,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# PowerShell 2.0 compativel: erro de executavel nativo NAO dispara
+# excecao com ErrorActionPreference=Stop. Verificar LASTEXITCODE.
+function Invoke-NativeChecked {
+    param([Parameter(Mandatory = $true)][string]$Executable,
+          [string[]]$Arguments = @())
+    & $Executable @Arguments
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        throw ("Falha no comando " + $Executable + " (" +
+            ($Arguments -join " ") + "), ExitCode=" + $code)
+    }
+}
+
+
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($id)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -72,14 +86,14 @@ if ($Install) {
 
 if ($Status) {
     Test-UwfmgrDisponivel
-    & uwfmgr.exe get-config
+    Invoke-NativeChecked "uwfmgr.exe" @("get-config")
     exit 0
 }
 
 if ($Protect) {
     Test-UwfmgrDisponivel
     Write-Host "marcando $Protect para protecao UWF (so' entra em vigor com -Enable + reboot)..."
-    & uwfmgr.exe volume protect $Protect
+    Invoke-NativeChecked "uwfmgr.exe" @("volume", "protect", $Protect)
     Write-Host "marcado. rode -Enable e reinicie pra ativar de verdade."
     exit 0
 }
@@ -90,7 +104,7 @@ if ($Exclude) {
         throw "caminho de exclusao nao encontrado: $Exclude"
     }
     Write-Host "excluindo $Exclude da protecao UWF (esse caminho continua gravando normal, persiste entre reboots)..."
-    & uwfmgr.exe file add-exclusion $Exclude
+    Invoke-NativeChecked "uwfmgr.exe" @("file", "add-exclusion", $Exclude)
     exit 0
 }
 
@@ -100,7 +114,7 @@ if ($Enable) {
         "reiniciar, toda gravacao no(s) volume(s) protegido(s) vira provisoria e " +
         "sera descartada no boot seguinte. Se algo der errado, rode -Disable e " +
         "reinicie de novo para reverter.") -ForegroundColor Yellow
-    & uwfmgr.exe filter enable
+    Invoke-NativeChecked "uwfmgr.exe" @("filter", "enable")
     Write-Host "ativado para a proxima sessao. reinicie (Restart-Computer) para entrar em vigor."
     exit 0
 }
@@ -108,7 +122,7 @@ if ($Enable) {
 if ($Disable) {
     Test-UwfmgrDisponivel
     Write-Host "desativando o filtro UWF para a proxima sessao (saida de emergencia)..."
-    & uwfmgr.exe filter disable
+    Invoke-NativeChecked "uwfmgr.exe" @("filter", "disable")
     Write-Host "desativado para a proxima sessao. reinicie (Restart-Computer) para entrar em vigor."
     exit 0
 }
