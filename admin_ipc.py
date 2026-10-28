@@ -122,12 +122,26 @@ class Broker(object):
                                 if isinstance(x, dict) and "target" in x}
                     for key, cfg in targets.items():
                         x = reported.get(key, {})
-                        result["targets"].append({
+                        row = {
                             "target": key, "overlay": cfg["overlay"] or key + ".dfreezer",
                             "state": x.get("state", "error"),
                             "error": x.get("error", ""),
                             "baseline_paths": x.get("baseline_paths", 0),
-                        })
+                        }
+                        # Snapshot atual apenas da API. Erro de lock ou
+                        # manifesto nao e' silenciosamente healthy.
+                        try:
+                            with DeepFreezer(key, overlay=cfg["overlay"],
+                                             lock_timeout=0.1) as df:
+                                observed = df.status()
+                            row["frozen"] = observed["frozen"]
+                            row["pending_ops"] = observed["overlay_ops"]
+                            row["pending_seq"] = observed["pending_seq"]
+                        except (OSError, DeepFreezeError) as exc:
+                            row["frozen"] = None
+                            row["pending_ops"] = {}
+                            row["runtime_error"] = str(exc)
+                        result["targets"].append(row)
                 else:
                     target = obj.get("target")
                     if not isinstance(target, str) or target not in targets:
