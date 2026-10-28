@@ -59,3 +59,11 @@ jobs:
 
       - name: Rodar a suite de testes
         run: python run_tests.py -v
+
+  linux-kernel-overlayfs:
+    name: smoke real OverlayFS kernel (diretorio descartavel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar filtro real e provar escrita externa descartada apos umount
+        run: bash packaging/linux/test_overlayfs_kernel_ci.sh

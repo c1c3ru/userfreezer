@@ -63,3 +63,18 @@ montagem `overlay` nesse ponto. Um diretório normal que apenas existe
 agora é `inactive`, e não `configured`; um alvo inexistente é `error`.
 Mesmo `active` não comprova reinicialização, descarte de dados ou
 persistência de exclusões: esses testes continuam obrigatórios na VM.
+
+## Ensaio automatizado adicional de kernel (sem reboot)
+
+O workflow `.github/workflows/tests.yml` inclui o job
+`linux-kernel-overlayfs`, executando
+`packaging/linux/test_overlayfs_kernel_ci.sh` em runner Linux isolado.
+Este ensaio monta o OverlayFS real **somente** num diretório efêmero em
+`/srv/deepfreezer-ci-oslevel-*`, escreve nele por `tee` (fora da API),
+desmonta a camada de kernel e comprova que o arquivo externo desapareceu
+e o baseline ficou intacto. O cleanup verifica caminhos e tenta desmontar
+ambas as montagens mesmo em caso de falha.
+
+**Importante:** descarte após `umount` não prova recuperação após
+reinicialização, ativação no boot, exclusões persistentes nem rollback
+do sistema operacional. Esses itens continuam sob a #49 e #54.
