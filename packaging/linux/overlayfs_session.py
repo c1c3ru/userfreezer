@@ -125,6 +125,36 @@ def activate(target, size_mb=256, dry_run=False, accepted=False):
             "scope": "os-level-directory", "state": "active"}
 
 
+def validate_stable_boot_target(target):
+    """Boot unit deve usar arvore fixa de diretórios root-owned.
+
+    Protecao contra substituicao de paths por usuarios sem root entre
+    o preflight e o mount. /tmp sticky e permitido como ancestral,
+    mas o diretorio alvo em si deve ser root-owned e nao gravavel.
+    """
+    if not os.path.isabs(target):
+        raise OSLevelError("alvo de boot deve ser absoluto")
+    current = "/"
+    for part in os.path.normpath(target).strip("/").split("/"):
+        if not part:
+            continue
+        current = os.path.join(current, part)
+        try:
+            info = os.lstat(current)
+        except OSError as exc:
+            raise OSLevelError("alvo de boot ausente: %s" % exc)
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            raise OSLevelError("ancestral de boot nao e diretorio real")
+        if info.st_uid != 0:
+            raise OSLevelError("alvo boot requer proprietario root: %s" % current)
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            sticky_tmp = (current == "/tmp" and
+                          bool(info.st_mode & stat.S_ISVTX))
+            if not sticky_tmp:
+                raise OSLevelError(
+                    "ancestral boot gravavel por terceiros: %s" % current)
+
+
 def reject_api_target_overlap(target, config_path):
     """Falha fechada para alvos application-level iguais/aninhados."""
     if not config_path:
@@ -163,6 +193,8 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--size-mb", type=int, default=256)
     p.add_argument("--guard-config", help="recusa sobreposicao com config API")
+    p.add_argument("--require-root-owned-ancestors", action="store_true",
+                   help="boot: recusa ancestral/target gravavel ou nao-root")
     p.add_argument("--i-accept-volatile-protection", action="store_true")
     args = p.parse_args(argv)
     try:
@@ -172,9 +204,12 @@ def main(argv=None):
             result = {"target": args.target, "state": protection_status(args.target),
                       "scope": "os-level-directory"}
         else:
-            if args.guard_config:
+            if args.guard_config or args.require_root_owned_ancestors:
                 safe_target = _safe_absolute(args.target)
-                reject_api_target_overlap(safe_target, args.guard_config)
+                if args.require_root_owned_ancestors:
+                    validate_stable_boot_target(safe_target)
+                if args.guard_config:
+                    reject_api_target_overlap(safe_target, args.guard_config)
             result = activate(args.target, args.size_mb, args.dry_run,
                               args.i_accept_volatile_protection)
         print(json.dumps(result, indent=2))

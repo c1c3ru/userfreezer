@@ -13,7 +13,7 @@ RemainAfterExit=yes
 User=root
 Group=root
 # Sem ExecStop: systemctl stop nao desmonta; reiniciar VM de manutencao.
-ExecStart=/usr/bin/python3 -B /opt/deepfreezer/overlayfs_session.py --target %f --enable --size-mb 128 --i-accept-volatile-protection --guard-config /etc/deepfreezer/config.json
+ExecStart=/usr/bin/python3 -B /opt/deepfreezer/overlayfs_session.py --target %f --enable --size-mb 128 --i-accept-volatile-protection --require-root-owned-ancestors --guard-config /etc/deepfreezer/config.json
 TimeoutStartSec=45
 
 [Install]

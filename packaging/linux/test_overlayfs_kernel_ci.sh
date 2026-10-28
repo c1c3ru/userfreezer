@@ -18,6 +18,14 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'baseline\n' | sudo tee "$TARGET/baseline.txt" >/dev/null
+sudo python3 - "$TARGET" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location(
+    "overlayfs_session", "packaging/linux/overlayfs_session.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.validate_stable_boot_target(sys.argv[1])
+PY
 python3 packaging/linux/overlayfs_session.py --target "$TARGET" --enable --dry-run
 sudo python3 packaging/linux/overlayfs_session.py --target "$TARGET" --enable \
   --size-mb 64 --i-accept-volatile-protection

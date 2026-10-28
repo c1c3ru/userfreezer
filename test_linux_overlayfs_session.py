@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import importlib.util
 import os
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -82,6 +83,24 @@ class OverlayFsSafetyTests(unittest.TestCase):
                 json.dump({"targets": [{"target": "/srv/another"}]}, out)
             overlay.reject_api_target_overlap(target, cfg)
 
+    @unittest.skipIf(os.name == "nt", "somente Linux")
+    def test_boot_recusa_path_gravavel_por_usuarios(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "alvo")
+            os.mkdir(target)
+            os.chmod(root, 0o777)
+            try:
+                with self.assertRaises(overlay.OSLevelError):
+                    overlay.validate_stable_boot_target(target)
+            finally:
+                os.chmod(root, 0o700)
+
+    @unittest.skipIf(os.name == "nt", "somente Linux")
+    def test_boot_permite_tmp_sticky_owned_by_root(self):
+        if os.stat("/tmp").st_uid != 0 or not (os.stat("/tmp").st_mode & stat.S_ISVTX):
+            self.skipTest("sem /tmp sticky root-owned neste ambiente")
+        overlay.validate_stable_boot_target("/tmp")
+
     def test_guard_config_corrompida_falha_fechado(self):
         with tempfile.TemporaryDirectory() as root:
             path = os.path.join(root, "broken.json")
@@ -97,7 +116,8 @@ class OverlayFsSafetyTests(unittest.TestCase):
             unit = out.read()
         for token in ("Type=oneshot", "RemainAfterExit=yes",
                       "--target %f", "--guard-config /etc/deepfreezer/config.json",
-                      "--i-accept-volatile-protection"):
+                      "--i-accept-volatile-protection",
+                      "--require-root-owned-ancestors"):
             self.assertIn(token, unit)
         self.assertNotIn("ExecStop=", unit)
 
