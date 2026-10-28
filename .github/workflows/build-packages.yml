@@ -113,6 +113,8 @@ jobs:
           pyinstaller --onefile --noconsole --name deepfreezer_service_windows-10-11
           --hidden-import win32timezone
           --hidden-import deepfreezer
+          --hidden-import admin_ipc
+          --hidden-import admin_ipc_win
           --paths .
           packaging/windows/deepfreezer_service.py
 
@@ -156,6 +158,8 @@ jobs:
           pyinstaller --onefile --noconsole --name deepfreezer_service_windows-7-8
           --hidden-import win32timezone
           --hidden-import deepfreezer
+          --hidden-import admin_ipc
+          --hidden-import admin_ipc_win
           --paths .
           packaging/windows/deepfreezer_service.py
 
@@ -281,6 +285,25 @@ jobs:
               throw
           }
           Start-Sleep -Seconds 5
+          # O servico deve manter o Named Pipe real acessivel.
+          # O status nao fornece privilegiados nem garante protecao OS-level.
+          $retry = 0
+          $pipeOk = $false
+          while ($retry -lt 20 -and -not $pipeOk) {
+              try {
+                  $client = New-Object System.IO.Pipes.NamedPipeClientStream(
+                      ".", "DeepFreezerAdmin",
+                      [System.IO.Pipes.PipeDirection]::InOut)
+                  $client.Connect(1000)
+                  $client.Dispose()
+                  $pipeOk = $true
+              } catch {
+                  Start-Sleep -Milliseconds 300
+              }
+              $retry += 1
+          }
+          if (-not $pipeOk) { throw "Named pipe administrativo nao foi criado" }
+
           $svc = Get-Service -Name DeepFreezer
           Write-Host "apos Start-Service: status=$($svc.Status)"
           if ($svc.Status -ne "Running") { throw "servico nao ficou Running" }

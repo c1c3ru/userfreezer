@@ -43,9 +43,9 @@ class AdminPanel(object):
         columns = ("target", "state", "paths", "overlay", "error")
         self.table = ttk.Treeview(body, columns=columns, show="headings",
                                   selectmode="browse")
-        labels = {"target": "Alvo", "state": "Ultimo ciclo", "paths": "Arquivos",
+        labels = {"target": "Alvo", "state": "Enforcement / agora", "paths": "Base / pendentes",
                   "overlay": "Overlay", "error": "Falha"}
-        widths = {"target": 235, "state": 110, "paths": 85,
+        widths = {"target": 235, "state": 160, "paths": 120,
                   "overlay": 300, "error": 265}
         for key in columns:
             self.table.heading(key, text=labels[key])
@@ -90,10 +90,16 @@ class AdminPanel(object):
             target = entry["target"]
             iid = str(index)
             self.entries[iid] = entry
+            runtime = entry.get("frozen")
+            now_state = ("indisponivel" if runtime is None else
+                         "congelado" if runtime else "descongelado")
+            ops = entry.get("pending_ops") or {}
+            pending = sum(int(x) for x in ops.values())
+            error = entry.get("runtime_error") or entry.get("error", "")
             self.table.insert("", "end", iid=iid, values=(
-                target, entry.get("state", "error"),
-                entry.get("baseline_paths", 0),
-                entry.get("overlay", ""), entry.get("error", "")))
+                target, "%s / %s" % (entry.get("state", "error"), now_state),
+                "%s / %s" % (entry.get("baseline_paths", 0), pending),
+                entry.get("overlay", ""), error))
             if target == selected:
                 self.table.selection_set(iid)
                 self.table.focus(iid)
