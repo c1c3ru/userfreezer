@@ -23,6 +23,7 @@ install -d -m 0755 "$STAGE/etc/systemd/system"
 install -m 0755 "$REPO_ROOT/deepfreezer.py" "$STAGE/opt/deepfreezer/deepfreezer.py"
 install -m 0644 "$REPO_ROOT/enforcement_health.py" "$STAGE/opt/deepfreezer/enforcement_health.py"
 install -m 0644 "$REPO_ROOT/admin_ipc.py" "$STAGE/opt/deepfreezer/admin_ipc.py"
+install -m 0644 "$REPO_ROOT/os_level_status.py" "$STAGE/opt/deepfreezer/os_level_status.py"
 install -m 0755 "$REPO_ROOT/admin_client.py" "$STAGE/opt/deepfreezer/admin_client.py"
 install -m 0755 "$SRC_DIR/deepfreezerd.py" "$STAGE/opt/deepfreezer/deepfreezerd.py"
 install -m 0755 "$SRC_DIR/overlayfs_session.py" "$STAGE/opt/deepfreezer/overlayfs_session.py"
@@ -45,7 +46,7 @@ Section: admin
 Priority: optional
 Architecture: all
 Installed-Size: $SIZE_KB
-Depends: python3 (>= 3.6)
+Depends: python3 (>= 3.8)
 Maintainer: userfreezer project <noreply@example.com>
 Homepage: https://github.com/c1c3ru/userfreezer
 Description: DeepFreezer - application-level directory freeze/thaw
