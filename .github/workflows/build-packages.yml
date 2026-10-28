@@ -172,6 +172,15 @@ jobs:
 
           & "test\install_service_exe.ps1"
 
+          # Verifica JSON do instalador antes que o teste substitua a configuracao.
+          $configPath = "C:\ProgramData\DeepFreezer\config.json"
+          $configBytes = [System.IO.File]::ReadAllBytes($configPath)
+          if ($configBytes.Length -ge 3 -and $configBytes[0] -eq 0xEF -and $configBytes[1] -eq 0xBB -and $configBytes[2] -eq 0xBF) {
+            throw "config.json criado com UTF-8 BOM"
+          }
+          & python -c "import json; json.load(open(r'C:\ProgramData\DeepFreezer\config.json', encoding='utf-8'))"
+          if ($LASTEXITCODE -ne 0) { throw "config.json nao foi aceito pelo parser Python" }
+
           New-Item -ItemType Directory -Force -Path "C:\df-ci-target" | Out-Null
           "original" | Out-File -Encoding ascii "C:\df-ci-target\f.txt"
           $cfg = @{ targets = @(@{ target = "C:\df-ci-target" }) } | ConvertTo-Json

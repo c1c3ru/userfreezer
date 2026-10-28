@@ -130,7 +130,7 @@ def _event_log(is_error, msg):
 
 def enforce_all(log):
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
             cfg = json.load(f)
     except (OSError, ValueError) as e:
         msg = "erro lendo config %s: %s" % (CONFIG_PATH, e)
