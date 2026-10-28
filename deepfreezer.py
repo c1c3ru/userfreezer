@@ -44,54 +44,85 @@ class DeepFreezeError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Lock de instancia unica (atomic create; staleness por timestamp)
+# Lock de instancia unica (travamento pelo SO; liberacao apos crash)
 # ---------------------------------------------------------------------------
 class _Lock(object):
+    """Trava um byte do arquivo LOCK; o kernel solta a trava se o processo cair.
+
+    Nao remove o arquivo no release: apagar um arquivo de lock cria uma
+    corrida entre processos que abriram inodes/handles diferentes. O proprio
+    thaw remove o arquivo junto com o overlay, apos fechar o handle.
+    Suporta Python 3.8/Windows 7 (msvcrt) e Linux (fcntl), sem dependencias.
+    """
+
     def __init__(self, path, timeout=10.0):
         self.path = _long(path)
         self.timeout = timeout
         self.fd = None
 
+    @staticmethod
+    def _os_lock(fd):
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    @staticmethod
+    def _os_unlock(fd):
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
     def acquire(self):
-        st = time.time()
-        while True:
-            try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            except FileExistsError:
+        if self.fd is not None:
+            raise DeepFreezeError("lock ja adquirido nesta instancia")
+        # O arquivo continua existindo entre sessoes: sua idade nao define
+        # se a trava esta ocupada. Nao trunca antes de adquirir o lock.
+        fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b" ")
+            start = time.monotonic()
+            while True:
                 try:
-                    with open(self.path, "rb") as f:
-                        meta = json.loads(f.read() or b"{}")
-                    if time.time() - float(meta.get("ts", 0)) > 86400:
-                        try:
-                            os.remove(self.path)
-                        except OSError:
-                            pass
-                        continue
-                except (ValueError, OSError):
-                    pass
-                if time.time() - st > self.timeout:
-                    raise DeepFreezeError(
-                        "overlay bloqueado por outra instancia (ou lock stale antigo)")
-                time.sleep(0.1)
-            else:
-                os.write(fd, json.dumps({"pid": os.getpid(), "ts": time.time()}).encode())
-                os.fsync(fd)
-                self.fd = fd
-                return
+                    self._os_lock(fd)
+                    break
+                except OSError as exc:
+                    if time.monotonic() - start >= self.timeout:
+                        raise DeepFreezeError(
+                            "overlay bloqueado por outra instancia (timeout)") from exc
+                    time.sleep(0.1)
+            self.fd = fd
+            payload = json.dumps({"pid": os.getpid(), "ts": time.time()}).encode("utf-8")
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.write(fd, payload)
+            os.ftruncate(fd, len(payload))
+            os.fsync(fd)
+        except BaseException:
+            if self.fd == fd:
+                self.fd = None
+            os.close(fd)
+            raise
 
     def release(self):
-        if self.fd is not None:
-            try:
-                os.close(self.fd)
-            except OSError:
-                pass
-            self.fd = None
-            try:
-                os.remove(self.path)
-            except OSError:
-                pass
+        if self.fd is None:
+            return
+        fd = self.fd
+        self.fd = None
+        try:
+            self._os_unlock(fd)
+        finally:
+            os.close(fd)
 
 
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Nucleo
 # ---------------------------------------------------------------------------
@@ -119,12 +150,16 @@ class DeepFreezer(object):
     def _open(self):
         if os.path.isdir(self.overlay):
             self._lock.acquire()
-            man = self._jread(os.path.join(self.overlay, "manifest.json"))
-            if man is None:
-                raise DeepFreezeError("overlay existe sem manifest (corrompido?)")
-            self.manifest = man
-            self.frozen = True
-            self._load_journal()
+            try:
+                man = self._jread(os.path.join(self.overlay, "manifest.json"))
+                if man is None:
+                    raise DeepFreezeError("overlay existe sem manifest (corrompido?)")
+                self.manifest = man
+                self.frozen = True
+                self._load_journal()
+            except BaseException:
+                self._lock.release()
+                raise
         elif os.path.exists(self.overlay):
             raise DeepFreezeError("caminho do overlay ja existe (nao eh dir)")
 
