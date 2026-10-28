@@ -40,6 +40,15 @@ class BrokerProtocolTests(unittest.TestCase):
         self.audit = []
         self.broker = Broker(self.config, self.status, audit=self.audit.append)
 
+    def test_overlay_usage_limita_sem_seguir_symlinks(self):
+        from admin_ipc import overlay_usage
+        root = os.path.join(self.temp.name, "payloads")
+        os.mkdir(root)
+        with open(os.path.join(root, "a.txt"), "wb") as f:
+            f.write(b"1234567")
+        self.assertEqual(overlay_usage(root), (7, False))
+        self.assertEqual(overlay_usage(root, file_limit=0), (0, True))
+
     def test_resposta_status_sem_segredos_e_com_overlay_personalizado(self):
         response = self.broker.process(msg("status"), is_admin=False, identity="uid=1000")
         self.assertTrue(response["ok"], response)
