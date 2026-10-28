@@ -582,6 +582,53 @@ class CommitPathIsolationTests(BaseCase):
         df.thaw(commit=True)
         self.assertFalse(os.path.exists(os.path.join(self.target, "nova")))
 
+    @unittest.skipUnless(os.name == "nt", "prova de handle nativo Windows")
+    def test_handle_bloqueia_rename_em_outro_processo(self):
+        """Verifica bloqueio de rename por OUTRO processo enquanto guard ativo."""
+        from win32_directory_guard import guarded_parent
+        source = os.path.join(self.target, "sub")
+        moved = os.path.join(self.target, "sub-moved")
+        script = ("import os, sys; os.rename(sys.argv[1], sys.argv[2])")
+        with guarded_parent(self.target, ["sub", "c.txt"]):
+            attempt = subprocess.run(
+                [sys.executable, "-c", script, source, moved],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertNotEqual(attempt.returncode, 0,
+                                "rename concorrente escapou do handle Win32")
+            self.assertTrue(os.path.isdir(source))
+            self.assertFalse(os.path.lexists(moved))
+        # Com os handles soltos, a mesma operacao deve ser possivel.
+        attempt = subprocess.run(
+            [sys.executable, "-c", script, source, moved],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(attempt.returncode, 0, attempt.stderr)
+        os.rename(moved, source)
+
+    @unittest.skipUnless(os.name == "nt", "junction de teste NTFS")
+    def test_remocao_recursiva_recusa_junction_em_descendente(self):
+        """Nao remover o conteudo externo via junction descoberta na recursao."""
+        outside = os.path.join(self.tmp, "fora-do-alvo")
+        os.makedirs(outside)
+        sentinel = os.path.join(outside, "sentinela.txt")
+        with open(sentinel, "wb") as out:
+            out.write(b"preservar")
+        link = os.path.join(self.target, "sub", "junction")
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", link, outside],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            self.skipTest("junction NTFS indisponivel: %r" % result.stderr)
+        try:
+            df = self.frozen_df()
+            df.remove("sub")
+            with self.assertRaises((DeepFreezeError, OSError)):
+                df.thaw(commit=True)
+            with open(sentinel, "rb") as handle:
+                self.assertEqual(handle.read(), b"preservar")
+        finally:
+            if os.path.lexists(link):
+                os.rmdir(link)
+
     def test_commit_rejeita_traversal_injetado_no_journal(self):
         df = self.frozen_df()
         df.ops["../escapou.txt"] = (999, "W", 0)
