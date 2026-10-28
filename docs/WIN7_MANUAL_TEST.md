@@ -89,3 +89,63 @@ Remova/anonimize nomes de pessoas, serial do disco ou dados sensíveis.
 
 **ATENÇÃO:** o CI que roda em `windows-latest` não comprova
 suporte ao Windows 7 nem substitui o ensaio do filtro na VM.
+
+## 5. Validação manual da release v0.1.10 em Windows 7 SP1
+
+**Responsável:** mantenedor. Não afirmar sucesso do Windows 7 até anexar
+logs e resultados completos à issue. Use Windows 7 SP1 em VM licenciada,
+com snapshot ANTES da instalação; preferir um disco virtual independente.
+
+### Binário, serviço e controle por UAC
+
+1. Baixe os artefatos da release v0.1.10, nunca o .deb incorreto
+   da v0.1.9. Verifique hashes contra SHA256SUMS publicado.
+2. Use deepfreezer_service_windows-7-8.exe e
+   deepfreezer-windows-service-scripts.zip no mesmo diretório. Instale
+   como Administrador usando install_service_exe.ps1 ou install.bat.
+3. Configure dois alvos de teste isolados no
+   C:\ProgramData\DeepFreezer\config.json, um com overlay padrão e
+   outro com overlay personalizado fora da árvore protegida.
+   Inicie serviço e confira Get-Service DeepFreezer e status.json.
+   Running não implica enforcement saudável: o JSON deve registrar
+   healthy para cada alvo.
+4. O serviço deve criar o Named Pipe local DeepFreezerAdmin. Execute
+   o EXE instalado em Program Files com --admin-cli status;
+   a saída pode ser silenciosa por ser --noconsole, mas o
+   código de saída precisa ser zero.
+5. Para a UI, instale Python 3.8 + Tkinter e pywin32 compatíveis
+   com Win7; use python ui/health_panel.py e python ui/tray_app.py.
+   Para bandeja, instalar pystray e Pillow também compatíveis.
+   Nunca relaxar ACL de config.json, pipe ou do serviço.
+6. Abra o painel como usuário comum: a lista de alvos e o overlay
+   personalizado devem aparecer. Tente mutação: UAC deve pedir
+   aprovação administrativa. Recuse o prompt e verifique que nada
+   mudou no disco.
+7. Autorize UAC somente em alvo descartável. Faça freeze, escreva
+   uma alteração via API, escolha Descartar e confirme baseline
+   intacto. Repita com Aplicar/commit, confirmando efeito esperado.
+8. Confirme que nonce expira e não é reutilizado; SID diferente
+   não pode executar ação. Cliente de pipe sem elevação recebe
+   acesso negado para operações administrativas.
+9. Interrompa o cliente, reinicie o serviço, confira saúde e estado
+   do overlay; não interpretar erro no meio como rollback automático.
+10. Guarde evidências: build, hash do EXE, logs, screenshot do painel,
+    UAC negado/aprovado, estado do JSON, ações autorizadas e negadas.
+
+**Windows 7 comum:** este teste comprova apenas application-level.
+Não habilite VHDX do projeto nem anuncie proteção de gravações
+externas. Em Windows 7 Embedded, o roteiro EWF/FBWF exige filtro
+realmente presente na imagem licenciada.
+
+### Registro para anexar às issues
+
+| Caso | Esperado | Resultado |
+| --- | --- | --- |
+| EXE Win7 SP1 | Serviço e IPC iniciam | PENDENTE |
+| Named Pipe e ACL | Usuário comum não executa mutações | PENDENTE |
+| UAC negado | Alvo intacto | PENDENTE |
+| UAC aprovado | Apenas ação autorizada | PENDENTE |
+| Overlay personalizado | Listado e operável | PENDENTE |
+| Crash/erro no descarte | Erro ou recuperação coerente | PENDENTE |
+| Reutilização do nonce | Negada | PENDENTE |
+| Tk/pystray | Usável no desktop Win7 | PENDENTE |

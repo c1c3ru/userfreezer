@@ -7,16 +7,24 @@ estado original a qualquer momento — no próximo boot ou por comando
 do administrador.
 
 - **Core** (`deepfreezer.py`): 100% biblioteca padrão do Python,
-  compatível com 3.6+. Nenhum módulo de kernel, nenhum driver, nenhuma
+  compatível com Python 3.8+. Nenhum módulo de kernel, nenhum driver, nenhuma
   dependência externa.
 - **Serviço/daemon** (`packaging/`): encapsula o core como serviço de
   sistema (systemd no Linux, Windows Service no Windows) para rodar no
   boot, ficar fora do controle do usuário comum e reforçar o ciclo
   "muda na sessão, volta ao congelado no próximo boot".
-- **Bandeja do sistema** (`ui/`): ícone azul/laranja (congelado/
-  descongelado), painel de status e alternância de estado atrás de
-  senha de admin. Única parte com dependência externa (`pystray` +
-  `Pillow`), já que não existe API de bandeja na stdlib.
+- **Bandeja e painel administrativo** (`ui/`): status de todos os alvos,
+  alterações pendentes e comandos via IPC autorizado pelo serviço.
+  A interface não lê configuração protegida nem modifica o núcleo
+  diretamente. A elevação administrativa é solicitada ao SO (UAC/polkit)
+  e validada pelo servidor. A bandeja usa `pystray` e `Pillow`.
+
+> **Nota de versão:** a publicação v0.1.9 contém, por engano,
+> um pacote Debian 0.1.8. Utilize **v0.1.10** ou posterior.
+> O Windows 7 ainda requer testes manuais de binário e UAC;
+> Windows 7 comum **não** tem UWF e não deve executar o provisionador VHDX
+> do projeto. O congelamento do núcleo é **application-level**, não
+> proteção integral contra modificações externas.
 
 ## Pacotes prontos (.deb / .exe / ferramental Windows)
 
@@ -29,7 +37,7 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
   (`chmod 700`) e a unit do systemd, já com as permissões da Tarefa 2
   aplicadas pelo próprio `postinst`.
   ```
-  sudo dpkg -i deepfreezer_0.1.0_all.deb
+  sudo dpkg -i deepfreezer_0.1.10_all.deb
   sudo systemctl start deepfreezer      # revise /etc/deepfreezer/config.json antes
   sudo apt remove deepfreezer           # remove (preserva config)
   sudo apt purge deepfreezer            # remove tudo
@@ -141,12 +149,20 @@ with DeepFreezer(r"C:\app") as df:   # ou "/opt/app"
     df.thaw(commit=False)            # "desligar": volta ao estado congelado
 ```
 
+**Proteção opcional do kernel no Linux:** o script
+`packaging/linux/overlayfs_session.py` pode montar um OverlayFS em
+diretórios autorizados com alterações desviadas para tmpfs. **Não é
+habilitado automaticamente, não protege a raiz do SO** e deve ser
+validado em VM antes do uso. Veja `docs/LINUX_OVERLAYFS_VM.md`.
+
 **Limite honesto:** o freezer é *application-level* — protege a árvore
 contra mudanças feitas por quem passa pela API/CLI. Um `sed -i`
 externo direto no arquivo ainda mexe no disco de verdade. Congelar o
-SO inteiro (qualquer processo) exige abordagem de kernel: `overlayfs`
-no boot (Linux) ou VHDX diferencial sobre a base do `C:\` (Windows) —
-fora do escopo deste core; ver observações no final deste arquivo.
+SO inteiro (qualquer processo) exige abordagem de kernel/filtro:
+OverlayFS no boot (Linux), UWF em edições Windows compatíveis,
+EWF/FBWF em determinadas imagens Windows 7 Embedded ou uma estratégia
+de boot diferencial validada. O provisionador VHDX existente **não
+suporta Windows 7 comum**. Ver `docs/OS_LEVEL_VALIDATION.md`.
 
 ## Serviço de sistema (`packaging/`)
 
@@ -199,21 +215,26 @@ pro passo a passo completo, os caminhos manuais
 (`harden_acl.ps1`) e o que o CI já valida de verdade vs. o que só dá
 pra confirmar numa máquina Windows real.
 
-## Bandeja do sistema (`ui/`)
+## Painel e bandeja autenticados (`ui/`)
 
-Ícone na área de notificação — cadeado azul (congelado) ou laranja
-(descongelado) — com painel de status e alternância de estado atrás
-de senha de admin (hash PBKDF2-HMAC-SHA256 + salt, nunca texto plano):
+A interface é um **cliente sem privilégios**. O daemon faz a autorização
+via `SO_PEERCRED` (Linux) ou token do cliente do Named Pipe (Windows).
+Para operações administrativas, a UI solicita elevação ao sistema
+operacional via polkit/`pkexec` ou UAC. As operações destrutivas
+exigem confirmação explícita e nonce temporário de uso único.
 
+```sh
+pip install pystray Pillow  # apenas para ícone na bandeja; Tkinter no painel
+python3 ui/tray_app.py
+python3 ui/health_panel.py
+python3 admin_client.py status
 ```
-pip install pystray Pillow                                    # única dependência externa do projeto
-python3 ui/set_admin_password.py --config /etc/deepfreezer/config.json
-python3 ui/tray_app.py --config /etc/deepfreezer/config.json
-```
 
-Detalhes, dependências (Tkinter pode exigir `python3-tk` no Linux) e o
-que ficou pendente de validação numa sessão gráfica real em
-`ui/README.md`.
+O daemon Linux é um serviço residente que oferece o IPC local. O
+serviço Windows também oferece Named Pipe; sem ele, ações administrativas
+não têm fallback local. O painel requer Python + Tkinter e (no Windows)
+pywin32, e precisa ser testado em sessão gráfica real antes de produção.
+Detalhes em `ui/README.md` e `docs/WIN7_MANUAL_TEST.md`.
 
 ## Receitas de arquitetura: congelamento de SO completo (nível de kernel)
 
