@@ -548,6 +548,40 @@ class CommitPathIsolationTests(BaseCase):
         with open(outside, "rb") as f:
             self.assertEqual(f.read(), b"original")
 
+    @unittest.skipUnless(os.name == "nt", "junctions reais apenas no Windows")
+    def test_commit_nao_segue_junction_ntfs(self):
+        """mklink /J nao requer Windows 10 nem Developer Mode."""
+        outside = os.path.join(self.tmp, "fora-junction")
+        os.makedirs(outside)
+        df = self.frozen_df()
+        link = os.path.join(self.target, "link-junction")
+        import subprocess
+        cmd = ["cmd", "/c", "mklink", "/J", link, outside]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode:
+            self.skipTest("mklink /J indisponivel: %s" % result.stderr)
+        try:
+            df.write("link-junction/fora.txt", b"proibido")
+            with self.assertRaises((DeepFreezeError, OSError)):
+                df.thaw(commit=True)
+            self.assertFalse(os.path.exists(os.path.join(outside, "fora.txt")))
+        finally:
+            if os.path.lexists(link):
+                os.rmdir(link)
+
+    @unittest.skipUnless(os.name == "nt", "Windows NTFS")
+    def test_commit_e_exclusao_recursiva_sem_junction(self):
+        """Backend Win32 por handles mantem operacoes normais."""
+        df = self.frozen_df()
+        df.write("nova/sub/arquivo.txt", b"ok")
+        df.thaw(commit=True)
+        self.assertEqual(open(os.path.join(
+            self.target, "nova", "sub", "arquivo.txt"), "rb").read(), b"ok")
+        df.freeze()
+        df.remove("nova")
+        df.thaw(commit=True)
+        self.assertFalse(os.path.exists(os.path.join(self.target, "nova")))
+
     def test_commit_rejeita_traversal_injetado_no_journal(self):
         df = self.frozen_df()
         df.ops["../escapou.txt"] = (999, "W", 0)
