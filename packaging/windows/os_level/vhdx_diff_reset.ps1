@@ -28,8 +28,10 @@
 # de manutencao/WinPE -- nunca a partir do proprio diff.vhdx que sera
 # substituido.
 #
-# Uso:
+# Uso (inspecao SEM efeitos; comportamento padrao):
 #   .\vhdx_diff_reset.ps1 -VhdDir V:\DeepFreezerVHD -BootDisk S:
+# Somente em VM WinPE/WinRE com snapshot:
+#   .\vhdx_diff_reset.ps1 -VhdDir V:\DeepFreezerVHD -BootDisk S: -IAcceptTheRisk
 #
 # Parametros:
 #   -VhdDir     pasta onde base.vhdx e diff.vhdx moram (a mesma usada em vhdx_diff_setup.ps1)
@@ -47,13 +49,36 @@
 
 param(
     [string]$VhdDir = "V:\DeepFreezerVHD",
-    [Parameter(Mandatory = $true)][string]$BootDisk
+    [Parameter(Mandatory = $true)][string]$BootDisk,
+    [switch]$IAcceptTheRisk
 )
 
 $ErrorActionPreference = "Stop"
 
 $BasePath = Join-Path $VhdDir "base.vhdx"
 $DiffPath = Join-Path $VhdDir "diff.vhdx"
+
+# Sem flag explicita NUNCA apagar disco diferencial nem alterar boot.
+# Aceite apenas no WinPE/WinRE. Runner Windows normal deve falhar fechado.
+if (-not $IAcceptTheRisk) {
+    Write-Host "DRY-RUN: nenhum disco, VHDX ou BCD sera modificado."
+    Write-Host ("base: " + $BasePath)
+    Write-Host ("diferencial: " + $DiffPath)
+    Write-Host ("ESP declarada: " + $BootDisk)
+    Write-Host "Para executar em VM WinPE com snapshot, use -IAcceptTheRisk."
+    exit 0
+}
+if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\MiniNT")) {
+    throw "Reset VHDX permitido somente em WinPE/WinRE (MiniNT nao presente)"
+}
+$id = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($id)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Reset exige Administrador no WinPE"
+}
+if ($BootDisk -notmatch "^[A-Za-z]:$") {
+    throw "BootDisk deve ser uma letra com dois pontos (ex.: S:)"
+}
 
 if (-not (Test-Path $BasePath)) {
     throw "base.vhdx nao encontrado em $VhdDir -- confirme -VhdDir (ele deveria ter sido criado por vhdx_diff_setup.ps1)"
@@ -91,6 +116,9 @@ assign letter=W
 
 Write-Host "repontando o boot para o diff.vhdx novo..."
 & bcdboot.exe W:\Windows /s $BootDisk /f UEFI
+if ($LASTEXITCODE -ne 0) {
+    throw "bcdboot falhou ExitCode=$LASTEXITCODE; recuperacao manual necessaria"
+}
 
 Invoke-Diskpart @"
 select vdisk file="$DiffPath"
