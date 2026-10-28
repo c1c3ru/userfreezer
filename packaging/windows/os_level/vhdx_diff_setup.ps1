@@ -60,6 +60,7 @@ param(
     [int]$ImageIndex = 1,
     [Parameter(Mandatory = $true)][int]$TargetDiskNumber,
     [int]$SizeGB = 60,
+    [ValidateSet("8.1", "10", "11")][string]$TargetWindowsVersion,
     [switch]$IAcceptTheRisk
 )
 
@@ -96,6 +97,28 @@ Write-Host $plano -ForegroundColor Yellow
 if (-not $IAcceptTheRisk) {
     Write-Host "rode de novo com -IAcceptTheRisk para prosseguir (isso so' mostra o plano)."
     exit 0
+}
+
+# Nao confundir Windows 7 native VHD (.vhd, edicoes restritas) com
+# Windows 8+ native VHDX. Este provisionador NAO suporta Windows 7.
+# Mesmo executado em WinPE novo, a versao do SO da imagem deve ser
+# declarada e conferida pelo operador ANTES de particionar o disco.
+if (-not $TargetWindowsVersion) {
+    throw "Informe -TargetWindowsVersion 8.1/10/11. Windows 7 VHDX nao e suportado."
+}
+$hostBuild = [Environment]::OSVersion.Version.Build
+if ($hostBuild -lt 9200) {
+    throw "Execute a partir de WinPE/Windows moderno com suporte a VHDX."
+}
+Write-Host ("Versao ALVO declarada: " + $TargetWindowsVersion +
+            ". CONFIRME que ImageFile/ImageIndex correspondem a esse sistema.")
+$wimInfo = & dism.exe /Get-ImageInfo /ImageFile:$ImageFile /Index:$ImageIndex 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "DISM nao conseguiu inspecionar a imagem; abortando sem alterar o disco."
+}
+$wimText = ($wimInfo -join " ")
+if ($wimText -match "6\.1\.\d+") {
+    throw "A imagem aparenta Windows 7 (6.1); VHDX nativo nao suportado. Abortando."
 }
 
 $confirmacao = Read-Host 'Digite "CONFIRMO" (maiusculas, exato) para apagar o disco acima e continuar'
