@@ -12,8 +12,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate release tag against VERSION and CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          expected="v${version}"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME diverge de VERSION=$version"
+            exit 1
+          fi
+          if ! grep -Fxq "## $GITHUB_REF_NAME" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md sem secao ## $GITHUB_REF_NAME"
+            exit 1
+          fi
+
       - name: Build .deb
         run: packaging/linux/build_deb.sh dist
+
+      - name: Validate Debian package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          pkg="dist/deepfreezer_${version}_all.deb"
+          test -f "$pkg" || { echo "::error::Pacote ausente: $pkg"; exit 1; }
+          actual="$(dpkg-deb -f "$pkg" Version)"
+          test "$actual" = "$version" || {
+            echo "::error::Pacote $pkg possui Version=$actual, esperado $version"
+            exit 1
+          }
 
       - name: Install and smoke-test the .deb
         run: |
@@ -277,7 +306,7 @@ jobs:
       # passo nunca derruba o job.
       - name: Extract release notes from CHANGELOG.md
         run: |
-          python3 - "${GITHUB_REF_NAME}" > release_notes.md <<'PY' || true
+          python3 - "${GITHUB_REF_NAME}" > release_notes.md <<'PY'
           import io, re, sys
           tag = sys.argv[1]
           text = io.open("CHANGELOG.md", encoding="utf-8").read()
@@ -285,6 +314,10 @@ jobs:
                         text, re.M | re.S)
           sys.stdout.write(m.group(1).strip() if m else "")
           PY
+          if [ ! -s release_notes.md ]; then
+            echo "::error::Release sem notas especificas para ${GITHUB_REF_NAME}"
+            exit 1
+          fi
           # A tabela de "qual arquivo baixar" e' a mesma em toda release,
           # entao mora num arquivo so' e e' anexada aqui em vez de ser
           # repetida em cada secao do CHANGELOG.
