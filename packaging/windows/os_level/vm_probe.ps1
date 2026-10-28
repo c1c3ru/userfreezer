@@ -46,9 +46,12 @@ if ($Prepare) {
     }
     $os = Get-WmiObject Win32_OperatingSystem
     $ts = [DateTime]::UtcNow.ToString("o")
+    $bootUtc = [Management.ManagementDateTimeConverter]::ToDateTime(
+        $os.LastBootUpTime).ToUniversalTime().ToString("o")
     $lines = @(
         "id=$id", "marker=$marker", "os=$($os.Caption)",
         "build=$($os.BuildNumber)", "start_utc=$ts",
+        "boot_before_utc=$bootUtc",
         "evidence_dir=$evidenceAbs",
         "expected=marker_absent_after_reboot")
     [IO.File]::WriteAllLines($record, $lines,
@@ -68,17 +71,45 @@ if (-not (Test-Path -LiteralPath $record -PathType Leaf)) {
 }
 $data = @{}
 foreach ($line in [IO.File]::ReadAllLines($record)) {
-    $parts = $line.Split(@("="), 2)
-    if ($parts.Length -eq 2) { $data[$parts[0]] = $parts[1] }
+    # Compatibilidade com PowerShell 2.0/.NET: Split(array, 2) pode
+    # resolver 2 como StringSplitOptions, causando erro de conversao.
+    $pos = $line.IndexOf("=")
+    if ($pos -gt 0) {
+        $data[$line.Substring(0, $pos)] = $line.Substring($pos + 1)
+    }
 }
-if (-not $data.ContainsKey("marker")) { throw "registro corrompido" }
-$prefix = "deepfreezer-external-probe-"
-if (-not ([IO.Path]::GetFileName($data["marker"]).StartsWith($prefix))) {
-    throw "marker inseguro; abortando"
+if (-not $data.ContainsKey("marker") -or
+    -not $data.ContainsKey("id") -or
+    -not $data.ContainsKey("start_utc")) {
+    throw "registro corrompido; ausencia de marker/id/start_utc"
+}
+if (-not ($data["id"] -match "^[0-9a-f]{32}$")) {
+    throw "id GUID invalido"
+}
+$expectedName = "deepfreezer-external-probe-" + $data["id"] + ".txt"
+if ([IO.Path]::GetFileName($data["marker"]) -cne $expectedName) {
+    throw "marker nao corresponde ao GUID do registro"
 }
 if ($VerifyAfterReboot) {
-    $exists = Test-Path -LiteralPath $data["marker"]
     $os = Get-WmiObject Win32_OperatingSystem
+    # A ausencia do arquivo so prova rollback se houve boot NOVO.
+    # Caso contrario, exclusao manual/erro de preparo daria falso PASS.
+    $bootUtc = [Management.ManagementDateTimeConverter]::ToDateTime(
+        $os.LastBootUpTime).ToUniversalTime()
+    $preparedUtc = [DateTime]::Parse(
+        $data["start_utc"],
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    if ($bootUtc -le $preparedUtc) {
+        $result = Join-Path $evidenceAbs "deepfreezer-probe-result.txt"
+        [IO.File]::WriteAllLines($result, @(
+            "id=$($data['id'])", "state=FAIL_sem_reboot",
+            "prepared_utc=$($preparedUtc.ToString('o'))",
+            "observed_boot_utc=$($bootUtc.ToString('o'))"),
+            (New-Object Text.UTF8Encoding($false)))
+        throw "Reinicializacao NAO comprovada: boot anterior a Prepare; teste invalido"
+    }
+    $exists = Test-Path -LiteralPath $data["marker"]
     $status = if ($exists) { "FAIL_marker_persistiu" } else { "PASS_marker_descartado" }
     $ts = [DateTime]::UtcNow.ToString("o")
     $result = Join-Path $evidenceAbs "deepfreezer-probe-result.txt"

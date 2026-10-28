@@ -169,3 +169,14 @@ Após os ensaios, anexe em cada issue correspondente:
 - **#55:** nome e hash do EXE/ZIP/.deb baixados da release v0.1.11, sucesso ou falha de instalação/desinstalação e logs sem segredos.
 
 Se o teste não puder ser realizado, anote **não executado** em vez de marcar sucesso. Todos os registros devem referenciar o mesmo SHA do build e a versão do sistema.
+
+## Prova obrigatoria de nova inicializacao (issue #54)
+
+A partir do teste de regressao #54, `vm_probe.ps1 -Prepare` registra o
+horario UTC e o `Win32_OperatingSystem.LastBootUpTime` persistentes. O
+comando `-VerifyAfterReboot` consulta o boot atual por WMI e **falha**
+com `state=FAIL_sem_reboot` se o SO nao tiver reiniciado depois
+do preparo, mesmo que o arquivo de prova tenha sido apagado.
+Isso impede um falso positivo trivial, mas nao comprova sozinho que um
+filtro esta ativo: guardar tambem o output de `inspect_protection.ps1`
+antes/depois, a sentinela persistente da exclusao e o snapshot da VM.
