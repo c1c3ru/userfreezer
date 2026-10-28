@@ -56,6 +56,37 @@ class BrokerProtocolTests(unittest.TestCase):
         self.assertEqual(response["result"]["targets"][0]["overlay"],
                          os.path.join(self.temp.name, "custom.dfz"))
 
+    def test_status_os_level_independente_de_healthy(self):
+        from unittest import mock
+        observation = {
+            "state": "active", "strategy": "overlayfs",
+            "scope": "os-level-directory", "source": "kernel-findmnt",
+            "reboot_verified": False, "error": "",
+        }
+        with mock.patch("admin_ipc.probe_target", return_value=observation):
+            reply = self.broker.process(msg("status"), is_admin=False)
+        self.assertTrue(reply["ok"], reply)
+        row = reply["result"]["targets"][0]
+        self.assertEqual(row["state"], "healthy")
+        self.assertEqual(row["os_level"]["state"], "active")
+        self.assertEqual(row["os_level"]["scope"], "os-level-directory")
+        self.assertFalse(row["os_level"]["reboot_verified"])
+        self.assertEqual(reply["result"]["scope"], "application-level")
+
+    def test_windows_sem_sinal_kernel_deve_ser_unverified(self):
+        from unittest import mock
+        observation = {
+            "state": "unverified", "strategy": "unknown",
+            "scope": "unknown", "source": "not-checked",
+            "reboot_verified": False,
+            "error": "filtro Windows nao consultado",
+        }
+        with mock.patch("admin_ipc.probe_target", return_value=observation):
+            reply = self.broker.process(msg("status"))
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(reply["result"]["targets"][0]["os_level"]["state"],
+                         "unverified")
+
     def test_usuario_normal_nao_pode_mutar_mesmo_que_forje_confirmacao(self):
         for action in ("freeze", "discard", "commit"):
             with self.subTest(action=action):
@@ -116,6 +147,39 @@ class BrokerProtocolTests(unittest.TestCase):
             with self.subTest(raw=raw[:25]):
                 with self.assertRaises(ProtocolError):
                     decode_message(raw)
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_recusa_diretorio_gravavel_por_outros(self):
+        from admin_ipc import _validate_unix_socket_directory
+        folder = os.path.join(self.temp.name, "unsafe")
+        os.mkdir(folder)
+        os.chmod(folder, 0o777)
+        try:
+            with self.assertRaises(RuntimeError):
+                _validate_unix_socket_directory(folder)
+            with self.assertRaises(RuntimeError):
+                serve_unix(self.broker, os.path.join(folder, "admin.sock"),
+                           threading.Event())
+        finally:
+            os.chmod(folder, 0o700)
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_recusa_ancestral_symlink(self):
+        from admin_ipc import _validate_unix_socket_directory
+        original = os.path.join(self.temp.name, "real")
+        linked = os.path.join(self.temp.name, "link")
+        os.mkdir(original)
+        os.symlink(original, linked)
+        with self.assertRaises(RuntimeError):
+            _validate_unix_socket_directory(linked)
+        with self.assertRaises(RuntimeError):
+            serve_unix(self.broker, os.path.join(linked, "admin.sock"),
+                       threading.Event())
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_aceita_diretorio_privado(self):
+        from admin_ipc import _validate_unix_socket_directory
+        _validate_unix_socket_directory(self.temp.name)
 
     @unittest.skipIf(os.name == "nt", "Unix socket")
     def test_unix_socket_peercred_status_para_nao_root(self):

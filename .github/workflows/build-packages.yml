@@ -8,6 +8,7 @@ on:
       - ".github/workflows/build-packages.yml"
       - "packaging/**"
       - "admin_ipc*.py"
+      - "os_level_status.py"
       - "admin_client.py"
       - "deepfreezer.py"
       - "enforcement_health.py"
@@ -98,6 +99,12 @@ jobs:
           assert r['state']=='healthy', r
           assert r['protection_scope']=='application-level', r
           assert r['successful_targets']==1, r
+          import sys
+          sys.path.insert(0, '/opt/deepfreezer')
+          from os_level_status import probe_target
+          observed = probe_target('/tmp/df-ci-target')
+          assert observed['state']=='inactive', observed
+          assert not observed['reboot_verified'], observed
           "
           sudo dpkg -P deepfreezer
           test ! -d /opt/deepfreezer
@@ -126,7 +133,9 @@ jobs:
           --hidden-import win32timezone
           --hidden-import deepfreezer
           --hidden-import admin_ipc
-          --hidden-import admin_ipc_win
+          --hidden-import os_level_status
+          --hidden-import admin_ipc
+          --hidden-import os_level_status_win
           --paths .
           packaging/windows/deepfreezer_service.py
 
@@ -171,7 +180,9 @@ jobs:
           --hidden-import win32timezone
           --hidden-import deepfreezer
           --hidden-import admin_ipc
-          --hidden-import admin_ipc_win
+          --hidden-import os_level_status
+          --hidden-import admin_ipc
+          --hidden-import os_level_status_win
           --paths .
           packaging/windows/deepfreezer_service.py
 

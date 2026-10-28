@@ -70,7 +70,7 @@ instalação do serviço em Program Files.
    administrativas devem ser NEGADAS.
 2. Rodar como administrador/root: congelar um alvo de teste, consultar
    estado, descartar; repetir com overlay personalizado.
-3. Confirmar que `commit` pede a palavra digitada e backend emite
+3. No Linux, confirmar que `commit` pede a palavra digitada e backend emite
    token temporário. Tentar repetir um token já usado: negar.
 4. Parar serviço: painel deve indicar indisponibilidade sem executar
    operações locais como fallback.
@@ -81,3 +81,41 @@ instalação do serviço em Program Files.
 Os testes automáticos de protocolo e peer credentials não substituem
 os testes de ACL e usabilidade em sessão real. Consulte
 `docs/IPC_SECURITY_DESIGN.md` e a issue #53.
+
+## Bloqueio de segurança para commit no Windows (v0.1.12 em diante)
+
+O teste concorrente no PR #84 demonstrou renomeação de diretório
+apesar dos handles Win32 abertos. Para evitar escape da árvore alvo,
+`thaw(commit=True)` com operações pendentes **falha sem modificar o disco
+nem descartar o overlay** até existir um backend com semântica comprovada.
+`thaw(commit=False)` continua disponível. O painel mostra a restrição
+antes de oferecer qualquer autorização UAC. Linux mantém commit POSIX
+baseado em `dir_fd`/`O_NOFOLLOW`. A #63 permanece aberta.
+
+## Autostart da bandeja (somente usuario atual)
+
+A tela gráfica inicia sem root/Administrador; para abrir a bandeja
+automaticamente no login de um usuario, rode:
+
+```bash
+python ui/autostart.py --install
+python ui/autostart.py --remove
+```
+
+No Linux, cria/remove `~/.config/autostart/deepfreezer-tray.desktop`
+(`XDG_CONFIG_HOME` quando definido). No Windows 7+, usa somente
+`HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`, sem
+alterar `HKLM` nem executar UAC para iniciar a interface.
+
+O serviço privilegiado precisa estar instalado **separadamente** antes
+de usar a UI. Autostart de usuário não instala/modifica serviços nem
+altera a proteção de um volume.
+
+## Screenshot e teste de interface Linux
+
+O job `painel Tk em sessao virtual X11 e screenshot` do workflow `tests`
+renderiza uma instância real de Tk/ttk sob Xvfb e publica o artefato
+`deepfreezer-panel-linux-ci` com screenshot `panel-linux.png`.
+Os alvos e erros da imagem são **fixtures de teste**, não dados de
+estação real. O ensaio de desktop Windows 7 e aprovação UAC ainda
+exige sessão gráfica manual conforme `docs/WIN7_MANUAL_TEST.md`.

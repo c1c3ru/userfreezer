@@ -4,6 +4,100 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.1.12
+
+**Correção de segurança com alteração intencional de comportamento no
+Windows:** a operação `thaw(commit=True)` com operações pendentes fica
+**desabilitada no Windows** enquanto não existir um backend que garanta
+isolamento contra trocas concorrentes de diretórios/junctions. O
+journal e o overlay são preservados em caso de recusa; `thaw(commit=False)`
+continua disponível. Isso evita aplicar um commit potencialmente
+inseguro, mas **não resolve a #63**, que segue aberta.
+
+### Entregas desde v0.1.11
+
+- **#63 / PR #87:** bloqueio fail-closed do commit Windows e testes
+  cobrindo preservação da árvore, journal e descarte; UI explica a
+  indisponibilidade sem elevar privilégios. Commit Linux continua
+  disponível via chamadas relativas a `dir_fd`.
+- **#49 / PR #88:** teste real no kernel Linux monta OverlayFS por
+  diretório em VM de CI, escreve fora da API via shell e confirma
+  que modificações desaparecem após `umount` sem alterar o baseline.
+  **Não** é teste de reboot/recuperação do SO inteiro.
+- **#53 / PR #89:** integração de Named Pipe com token Windows
+  realmente restrito, comprovando que usuário sem SID administrativo
+  não consegue executar `freeze`. IPC considerado implementado,
+  mas testes Win7 SP1 com UAC permanecem manuais.
+- **#56 / PR #90:** autostart da bandeja no perfil do usuário
+  (XDG/Linux, HKCU/Windows), testes de segurança da UI e screenshot
+  de painel Tk real sob Xvfb no CI. Interface gráfica Windows 7
+  precisa de validação pelo mantenedor.
+- **#54 / PR #91:** `vm_probe.ps1` passou a exigir prova de boot
+  posterior ao preparo antes de declarar escrita externa revertida.
+  Também foi corrigida a leitura de linhas do registro em PowerShell
+  legado; CI Windows verifica que apagar a sentinela sem reiniciar
+  **não** produz falso PASS.
+
+### Compatibilidade e limitações
+
+- Dois executáveis Windows: 10/11 e 7/8 (Python 3.8). A compilação
+  Win7 não substitui instalação/teste em Windows 7 SP1 real.
+- Windows 7 comum segue sem estratégia OS-level suportada pelo projeto.
+  Não executar provisionamento VHDX nessa plataforma.
+- Estratégias Windows UWF/EWF/FBWF/VHDX e rollback/boot exigem teste
+  em VM com snapshots; o núcleo API permanece *application-level*.
+- O modo Linux OverlayFS é opcional por diretório, não protege
+  a raiz e não é ativado automaticamente.
+- Issues #49, #54, #56 e #63 permanecem abertas até seus demais
+  critérios; documentar resultados de VM em
+  `docs/WIN7_MANUAL_TEST.md`.
+
+## v0.1.11
+
+**Atualização de segurança do IPC Unix e aviso importante sobre commits Windows.**
+
+### Corrigido
+
+- **#53:** o broker Unix agora recusa diretórios do socket que não sejam
+  propriedade do processo servidor, ancestrais simbólicos e diretórios
+  graváveis por terceiros sem sticky bit; na finalização, remove apenas
+  o inode do socket que ele próprio publicou. Testes cobrem diretório
+  inseguro, ancestral simbólico e cenário válido. Compatível com
+  Python 3.8 e sem dependências novas.
+- **#49 — diagnóstico de OverlayFS Linux:** um diretório comum existente
+  não é mais apresentado como `configured` sem montagem; a consulta
+  retorna `inactive` até haver uma montagem detectada. Esse ajuste
+  elimina falso positivo de proteção, sem substituir ensaio de escrita
+  externa e reboot em VM.
+- **#63 — aviso de segurança:** um teste de renomeação feito por outro
+  processo identificou que os handles Win32 existentes **não impedem,
+  por si sós, todas as renomeações concorrentes**. A hipótese de
+  proteção completa contra TOCTOU foi retirada da documentação e
+  permanece como trabalho aberto na
+  [issue #63](https://github.com/c1c3ru/userfreezer/issues/63),
+  com teste reproduzível no
+  [PR #84](https://github.com/c1c3ru/userfreezer/pull/84).
+
+### Recomendações e limitações
+
+- **Não executar `thaw --commit` em diretórios Windows onde outro
+  processo não confiável possa alterar os caminhos simultaneamente.**
+  O suporte a esse modelo de adversário NÃO está comprovado. Use
+  descarte de overlay ou mantenha o alvo sob controle administrativo
+  até que a implementação de commits por handles relativos seguros
+  esteja concluída e testada.
+- O núcleo continua *application-level*. O modo OS-level por diretório
+  Linux é experimental e não é proteção da raiz do SO; os scripts
+  Windows de filtro/boot exigem validação em VM e podem não ser
+  suportados em todas as edições.
+- O executável Windows 7/8 é compilado com Python 3.8, mas o teste
+  nativo em Windows 7 SP1 fica a cargo do mantenedor. Builds e CI no
+  Windows moderno não substituem essa evidência.
+- Os arquivos são publicados com verificações de versão, hashes
+  `SHA256SUMS`, metadados SPDX e proveniência do GitHub Actions.
+  Use apenas os arquivos desta versão, não renomeie os pacotes da
+  v0.1.9.
+
 ## v0.1.10
 
 **Release corretiva de v0.1.9.** A tag pública `v0.1.9` foi criada

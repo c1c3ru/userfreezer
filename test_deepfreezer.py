@@ -570,6 +570,7 @@ class CommitPathIsolationTests(BaseCase):
                 os.rmdir(link)
 
     @unittest.skipUnless(os.name == "nt", "Windows NTFS")
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_e_exclusao_recursiva_sem_junction(self):
         """Backend Win32 por handles mantem operacoes normais."""
         df = self.frozen_df()
@@ -582,52 +583,20 @@ class CommitPathIsolationTests(BaseCase):
         df.thaw(commit=True)
         self.assertFalse(os.path.exists(os.path.join(self.target, "nova")))
 
-    @unittest.skipUnless(os.name == "nt", "prova de handle nativo Windows")
-    def test_handle_bloqueia_rename_em_outro_processo(self):
-        """Verifica bloqueio de rename por OUTRO processo enquanto guard ativo."""
-        from win32_directory_guard import guarded_parent
-        source = os.path.join(self.target, "sub")
-        moved = os.path.join(self.target, "sub-moved")
-        script = ("import os, sys; os.rename(sys.argv[1], sys.argv[2])")
-        with guarded_parent(self.target, ["sub", "c.txt"]):
-            attempt = subprocess.run(
-                [sys.executable, "-c", script, source, moved],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.assertNotEqual(attempt.returncode, 0,
-                                "rename concorrente escapou do handle Win32")
-            self.assertTrue(os.path.isdir(source))
-            self.assertFalse(os.path.lexists(moved))
-        # Com os handles soltos, a mesma operacao deve ser possivel.
-        attempt = subprocess.run(
-            [sys.executable, "-c", script, source, moved],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.assertEqual(attempt.returncode, 0, attempt.stderr)
-        os.rename(moved, source)
-
-    @unittest.skipUnless(os.name == "nt", "junction de teste NTFS")
-    def test_remocao_recursiva_recusa_junction_em_descendente(self):
-        """Nao remover o conteudo externo via junction descoberta na recursao."""
-        outside = os.path.join(self.tmp, "fora-do-alvo")
-        os.makedirs(outside)
-        sentinel = os.path.join(outside, "sentinela.txt")
-        with open(sentinel, "wb") as out:
-            out.write(b"preservar")
-        link = os.path.join(self.target, "sub", "junction")
-        result = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", link, outside],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode:
-            self.skipTest("junction NTFS indisponivel: %r" % result.stderr)
-        try:
-            df = self.frozen_df()
-            df.remove("sub")
-            with self.assertRaises((DeepFreezeError, OSError)):
-                df.thaw(commit=True)
-            with open(sentinel, "rb") as handle:
-                self.assertEqual(handle.read(), b"preservar")
-        finally:
-            if os.path.lexists(link):
-                os.rmdir(link)
+    @unittest.skipUnless(os.name == "nt", "fail-closed Win32")
+    def test_commit_windows_bloqueia_mudancas_sem_apagar_journal(self):
+        df = self.frozen_df()
+        df.write("a.txt", b"nao aplicar")
+        df.remove("sub")
+        with self.assertRaisesRegex(DeepFreezeError, "commit Windows desabilitado"):
+            df.thaw(commit=True)
+        self.assertTrue(df.frozen)
+        self.assertEqual(df.read("a.txt"), b"nao aplicar")
+        self.assertFalse(os.path.lexists(df.overlay + ".discarding"))
+        self.assertDiskIntact()
+        # Descarte segue disponivel no Windows.
+        df.thaw(commit=False)
+        self.assertDiskIntact()
 
     def test_commit_rejeita_traversal_injetado_no_journal(self):
         df = self.frozen_df()
@@ -663,6 +632,7 @@ class CommitPathIsolationTests(BaseCase):
             open(os.path.join(self.target, "a.txt"), "rb").read(), self.TREE["a.txt"])
 
 class ThawCommitTests(BaseCase):
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_aplica_write_mkdirs_e_remove_no_disco(self):
         df = self.frozen_df()
         df.write("a.txt", b"mudou")
@@ -686,6 +656,7 @@ class ThawCommitTests(BaseCase):
         self.assertFalse(os.path.exists(overlay))
         self.assertFalse(df.frozen)
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_respeita_a_ordem_das_operacoes(self):
         df = self.frozen_df()
         df.write("a.txt", b"primeiro")
@@ -697,6 +668,7 @@ class ThawCommitTests(BaseCase):
         self.assertNotIn("a.txt", disco)
         self.assertEqual(disco["b.bin"], b"depois")
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_commit_de_remove_seguido_de_write_mantem_o_arquivo(self):
         df = self.frozen_df()
         df.remove("a.txt")
@@ -710,6 +682,7 @@ class ThawCommitTests(BaseCase):
         df.thaw(commit=True)
         self.assertDiskIntact()
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_freeze_de_novo_depois_do_commit(self):
         df = self.frozen_df()
         df.write("a.txt", b"v2")
@@ -760,6 +733,7 @@ class JournalRecoveryTests(BaseCase):
         df2.thaw()
         self.assertDiskIntact()
 
+    @unittest.skipIf(os.name == "nt", "commit Win32 bloqueado ate corrigir #63")
     def test_reabrir_e_commit_aplica_o_que_estava_no_journal(self):
         df = self.frozen_df()
         df.write("a.txt", b"mudou")

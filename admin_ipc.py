@@ -15,6 +15,7 @@ import time
 import uuid
 
 from deepfreezer import DeepFreezer, DeepFreezeError
+from os_level_status import probe_target
 
 MAX_BYTES = 16384
 ACTIONS = ("status", "prepare", "freeze", "discard", "commit")
@@ -149,6 +150,9 @@ class Broker(object):
                             "state": x.get("state", "error"),
                             "error": x.get("error", ""),
                             "baseline_paths": x.get("baseline_paths", 0),
+                            # Escopo do kernel e independente de healthy
+                            # (que mede apenas a API DeepFreezer).
+                            "os_level": probe_target(key),
                         }
                         # Snapshot atual apenas da API. Erro de lock ou
                         # manifesto nao e' silenciosamente healthy.
@@ -255,13 +259,46 @@ def unix_peer_credentials(sock):
     return pid, uid, gid
 
 
+def _validate_unix_socket_directory(directory):
+    """Falha fechada se um pai do socket puder ser substituido por usuario comum.
+
+    Permite /tmp com sticky bit, mas exige que o diretorio final pertença
+    ao UID efetivo e nao permita escrita por grupo/outros. Rejeita links
+    simbolicos em qualquer ancestral do caminho.
+    """
+    import stat
+    if not os.path.isabs(directory):
+        raise RuntimeError("diretorio do IPC deve ser absoluto")
+    current = os.path.sep
+    for component in os.path.normpath(directory).split(os.path.sep)[1:]:
+        if not component:
+            continue
+        current = os.path.join(current, component)
+        info = os.lstat(current)
+        if not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError("ancestral do IPC nao e diretorio real: %s" % current)
+        if info.st_mode & 0o022:
+            # Sticky bit em /tmp protege entradas de usuarios distintos.
+            if not (info.st_mode & stat.S_ISVTX):
+                raise RuntimeError("diretorio ancestral gravavel por terceiros: %s" %
+                                   current)
+    info = os.lstat(directory)
+    if info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise RuntimeError("diretorio do IPC exige proprietario do servico e modo seguro")
+
+
 def serve_unix(broker, path, stop_event=None):
     """Unix socket local; status leitura comum, mutacoes SOMENTE uid=0."""
     if os.name == "nt":
         raise RuntimeError("usar named pipe no Windows")
     stop_event = stop_event or threading.Event()
+    if not os.path.isabs(path):
+        raise RuntimeError("caminho do socket IPC deve ser absoluto")
     directory = os.path.dirname(path)
+    # Não seguir links preexistentes durante a criação: a validacao
+    # posterior recusa ancestrais simbolicos ou gravaveis por terceiros.
     os.makedirs(directory, mode=0o755, exist_ok=True)
+    _validate_unix_socket_directory(directory)
     if os.path.lexists(path):
         if not stat_is_socket(path) or os.lstat(path).st_uid != os.geteuid():
             raise RuntimeError("socket antigo inseguro ou de outro proprietario")
@@ -276,8 +313,12 @@ def serve_unix(broker, path, stop_event=None):
             else:
                 raise RuntimeError("servidor IPC ja ativo")
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    bound_identity = None
     try:
         server.bind(path)
+        # Nao remover socket de outro processo se o pathname for trocado.
+        bound = os.lstat(path)
+        bound_identity = (bound.st_dev, bound.st_ino)
         os.chmod(path, 0o666)  # autenticacao por SO_PEERCRED em cada comando
         server.listen(8)
         server.settimeout(0.5)
@@ -304,8 +345,16 @@ def serve_unix(broker, path, stop_event=None):
                         pass
     finally:
         server.close()
-        if os.path.lexists(path) and stat_is_socket(path):
-            os.unlink(path)
+        # Se o pathname tiver sido substituido, nao apagar a entrada nova.
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            pass
+        else:
+            import stat
+            if (bound_identity is not None and stat.S_ISSOCK(info.st_mode)
+                    and (info.st_dev, info.st_ino) == bound_identity):
+                os.unlink(path)
 
 
 def stat_is_socket(path):

@@ -79,3 +79,14 @@ sem segredos. Verificar versionamento e rollback de protocolo.
 
 Sem esses testes, não declarar resolvida a issue #53 nem distribuir painel
 com controles privilegiados.
+
+## Endurecimento do socket Unix
+
+O diretório do socket é validado antes do `bind`: deve pertencer ao UID
+que inicia o serviço, não pode permitir escrita por grupo/outros e não
+pode estar sob ancestral com symlink ou diretório gravável sem sticky bit.
+O caso padrão `/run/deepfreezer` deve continuar root-owned; o socket
+permite leitura de status, mas mutações exigem `SO_PEERCRED` uid=0.
+Na limpeza, apenas o inode efetivamente criado pelo servidor é removido.
+Isso reduz ataques à localização do socket, mas não é garantia contra
+processos já executando como root. Testar em VM antes de produção.

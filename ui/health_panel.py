@@ -19,7 +19,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from admin_client import request  # noqa: E402
-from admin_elevation import run_admin_action  # noqa: E402
+from ui.admin_elevation import run_admin_action  # noqa: E402
 
 
 class AdminPanel(object):
@@ -28,7 +28,7 @@ class AdminPanel(object):
         self.socket_path = socket_path
         self.preselect = preselect
         self.root.title("DeepFreezer - Gerenciamento local autenticado")
-        self.root.geometry("1060x560")
+        self.root.geometry("1200x580")
         self.entries = {}
         self.last_snapshot = None
 
@@ -38,18 +38,19 @@ class AdminPanel(object):
                   font=("TkDefaultFont", 15, "bold")).pack(anchor="w")
         self.status = ttk.Label(header, text="Conectando ao servico...")
         self.status.pack(anchor="w", pady=4)
-        ttk.Label(header, text="Somente application-level: 'healthy' nao significa protecao do disco inteiro.",
-                  wraplength=990).pack(anchor="w")
+        ttk.Label(header, text="API healthy != OS protegido. Estado do kernel consultado separadamente; ativo por diretorio nao comprova reboot.",
+                  wraplength=1120).pack(anchor="w")
 
         body = ttk.Frame(root, padding=(12, 0, 12, 10))
         body.pack(fill="both", expand=True)
-        columns = ("target", "state", "paths", "overlay", "error")
+        columns = ("target", "state", "os_level", "paths", "overlay", "error")
         self.table = ttk.Treeview(body, columns=columns, show="headings",
                                   selectmode="browse")
-        labels = {"target": "Alvo", "state": "Enforcement / agora", "paths": "Base / pendentes",
-                  "overlay": "Overlay / tamanho", "error": "Falha"}
-        widths = {"target": 235, "state": 160, "paths": 120,
-                  "overlay": 300, "error": 265}
+        labels = {"target": "Alvo", "state": "API / agora", "os_level": "Kernel / escopo",
+                  "paths": "Base / pendentes", "overlay": "Overlay / tamanho",
+                  "error": "Falha"}
+        widths = {"target": 215, "state": 142, "os_level": 155, "paths": 110,
+                  "overlay": 245, "error": 235}
         for key in columns:
             self.table.heading(key, text=labels[key])
             self.table.column(key, width=widths[key], minwidth=75)
@@ -100,9 +101,15 @@ class AdminPanel(object):
                          "congelado" if runtime else "descongelado")
             ops = entry.get("pending_ops") or {}
             pending = sum(int(x) for x in ops.values())
-            error = entry.get("runtime_error") or entry.get("error", "")
+            os_level = entry.get("os_level") or {}
+            os_state = os_level.get("state", "unverified")
+            os_scope = os_level.get("scope", "unknown")
+            os_strategy = os_level.get("strategy", "unknown")
+            error = (entry.get("runtime_error") or entry.get("error", "") or
+                     os_level.get("error", ""))
             self.table.insert("", "end", iid=iid, values=(
                 target, "%s / %s" % (entry.get("state", "error"), now_state),
+                "%s (%s, %s)" % (os_state, os_strategy, os_scope),
                 "%s / %s" % (entry.get("baseline_paths", 0), pending),
                 "%s (%s bytes%s)" % (
                     entry.get("overlay", ""),
@@ -145,6 +152,15 @@ class AdminPanel(object):
         return entry["target"] if entry else None
 
     def action(self, operation):
+        if operation == "commit" and os.name == "nt":
+            messagebox.showerror(
+                "Commit indisponivel no Windows",
+                "Operacao bloqueada pelo core por seguranca (#63). "
+                "Um teste mostrou troca concorrente de diretorios mesmo "
+                "com handles Win32 abertos. Descarte alteracoes ou "
+                "aguarde o backend com commit seguro.",
+                parent=self.root)
+            return
         target = self.selected_target()
         if not target:
             messagebox.showwarning("DeepFreezer", "Selecione um alvo primeiro.",
