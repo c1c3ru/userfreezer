@@ -7,6 +7,31 @@ on:
       - "v*"
 
 jobs:
+  unit-tests:
+    name: release-tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            python-version: "3.8"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.8"
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify syntax
+        run: python -m compileall -q .
+      - name: Run tests
+        run: python run_tests.py -v
+
   build-deb:
     runs-on: ubuntu-latest
     steps:
@@ -289,7 +314,7 @@ jobs:
           path: dist/deepfreezer-windows-os-level.zip
 
   release:
-    needs: [build-deb, build-exe, build-exe-win7, package-service-scripts, package-os-level, test-windows-service]
+    needs: [unit-tests, build-deb, build-exe, build-exe-win7, package-service-scripts, package-os-level, test-windows-service]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -300,6 +325,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Verificar lista de artefatos, gerar SHA256SUMS e SPDX
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_metadata.py \\
+            --version "$(tr -d '[:space:]' < VERSION)" \\
+            --artifacts artifacts --out release-meta
+          test -s release-meta/SHA256SUMS
+          test -s release-meta/release.spdx.json
 
       # Usa a secao do CHANGELOG.md da versao sendo publicada como corpo
       # da release. Se a tag nao tiver secao propria, sai um arquivo
@@ -338,3 +373,5 @@ jobs:
             artifacts/deepfreezer-exe-win7/*.exe
             artifacts/deepfreezer-windows-service-scripts/*.zip
             artifacts/deepfreezer-windows-os-level/*.zip
+            release-meta/SHA256SUMS
+            release-meta/release.spdx.json
