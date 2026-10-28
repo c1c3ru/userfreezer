@@ -71,8 +71,12 @@ if (-not (Test-Path -LiteralPath $record -PathType Leaf)) {
 }
 $data = @{}
 foreach ($line in [IO.File]::ReadAllLines($record)) {
-    $parts = $line.Split(@("="), 2)
-    if ($parts.Length -eq 2) { $data[$parts[0]] = $parts[1] }
+    # Compatibilidade com PowerShell 2.0/.NET: Split(array, 2) pode
+    # resolver 2 como StringSplitOptions, causando erro de conversao.
+    $pos = $line.IndexOf("=")
+    if ($pos -gt 0) {
+        $data[$line.Substring(0, $pos)] = $line.Substring($pos + 1)
+    }
 }
 if (-not $data.ContainsKey("marker") -or
     -not $data.ContainsKey("id") -or
