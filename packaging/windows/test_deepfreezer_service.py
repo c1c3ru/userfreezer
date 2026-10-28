@@ -14,9 +14,11 @@ log nem excecao. Por isso os testes checam que nada modal acontece no
 caminho do SCM -- inclusive com SESSIONNAME presente, que era
 exatamente o gatilho da versao antiga.
 """
+import json
 import logging
 import os
 import sys
+import tempfile
 import types
 import unittest
 
@@ -138,6 +140,57 @@ class DespachoDoServico(unittest.TestCase):
 
         sys.argv = ["deepfreezer_service.exe"]
         return svc
+
+    def test_config_invalida_publica_error(self):
+        svc = self.carrega()
+        with tempfile.TemporaryDirectory() as tmp:
+            svc.CONFIG_PATH = os.path.join(tmp, "inexistente.json")
+            svc.STATUS_PATH = os.path.join(tmp, "status.json")
+            svc._protect_health_status = lambda path: None
+            self.assertFalse(svc.enforce_all(svc._setup_logging()))
+            with open(svc.STATUS_PATH, encoding="utf-8") as f:
+                state = json.load(f)
+            self.assertEqual(state["state"], "error")
+            self.assertEqual(state["protection_scope"], "application-level")
+            self.assertIn("config", state["config_error"])
+
+    def test_alvo_com_falha_nao_recebe_selo_healthy(self):
+        svc = self.carrega()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "alvo")
+            os.makedirs(root)
+            cfg = os.path.join(tmp, "config.json")
+            with open(cfg, "w", encoding="utf-8") as f:
+                json.dump({"targets": [{"target": root},
+                    {"target": os.path.join(tmp, "ausente")}]}, f)
+            svc.CONFIG_PATH = cfg
+            svc.STATUS_PATH = os.path.join(tmp, "status.json")
+            svc._protect_health_status = lambda path: None
+            svc._harden_overlay = lambda path, log: True
+            self.assertFalse(svc.enforce_all(svc._setup_logging()))
+            with open(svc.STATUS_PATH, encoding="utf-8") as f:
+                state = json.load(f)
+            self.assertEqual(state["state"], "degraded")
+            self.assertEqual(state["successful_targets"], 1)
+            self.assertEqual(state["total_targets"], 2)
+
+    def test_acl_nao_protegida_e_erro_de_enforcement(self):
+        svc = self.carrega()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "alvo")
+            os.makedirs(root)
+            cfg = os.path.join(tmp, "config.json")
+            with open(cfg, "w", encoding="utf-8") as f:
+                json.dump({"targets": [{"target": root}]}, f)
+            svc.CONFIG_PATH = cfg
+            svc.STATUS_PATH = os.path.join(tmp, "status.json")
+            svc._protect_health_status = lambda path: None
+            svc._harden_overlay = lambda path, log: False
+            self.assertFalse(svc.enforce_all(svc._setup_logging()))
+            with open(svc.STATUS_PATH, encoding="utf-8") as f:
+                state = json.load(f)
+            self.assertEqual(state["state"], "error")
+            self.assertIn("ACL", state["targets"][0]["error"])
 
     # -- o caminho do SCM --------------------------------------------
 
