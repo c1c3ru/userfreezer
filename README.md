@@ -7,16 +7,24 @@ estado original a qualquer momento — no próximo boot ou por comando
 do administrador.
 
 - **Core** (`deepfreezer.py`): 100% biblioteca padrão do Python,
-  compatível com 3.6+. Nenhum módulo de kernel, nenhum driver, nenhuma
+  compatível com Python 3.8+. Nenhum módulo de kernel, nenhum driver, nenhuma
   dependência externa.
 - **Serviço/daemon** (`packaging/`): encapsula o core como serviço de
   sistema (systemd no Linux, Windows Service no Windows) para rodar no
   boot, ficar fora do controle do usuário comum e reforçar o ciclo
   "muda na sessão, volta ao congelado no próximo boot".
-- **Bandeja do sistema** (`ui/`): ícone azul/laranja (congelado/
-  descongelado), painel de status e alternância de estado atrás de
-  senha de admin. Única parte com dependência externa (`pystray` +
-  `Pillow`), já que não existe API de bandeja na stdlib.
+- **Bandeja e painel administrativo** (`ui/`): status de todos os alvos,
+  alterações pendentes e comandos via IPC autorizado pelo serviço.
+  A interface não lê configuração protegida nem modifica o núcleo
+  diretamente. A elevação administrativa é solicitada ao SO (UAC/polkit)
+  e validada pelo servidor. A bandeja usa `pystray` e `Pillow`.
+
+> **Nota de versão:** a publicação v0.1.9 contém, por engano,
+> um pacote Debian 0.1.8. Utilize **v0.1.10** ou posterior.
+> O Windows 7 ainda requer testes manuais de binário e UAC;
+> Windows 7 comum **não** tem UWF e não deve executar o provisionador VHDX
+> do projeto. O congelamento do núcleo é **application-level**, não
+> proteção integral contra modificações externas.
 
 ## Pacotes prontos (.deb / .exe / ferramental Windows)
 
@@ -29,7 +37,7 @@ cada execução e, numa tag `vX.Y.Z`, publica todos em
   (`chmod 700`) e a unit do systemd, já com as permissões da Tarefa 2
   aplicadas pelo próprio `postinst`.
   ```
-  sudo dpkg -i deepfreezer_0.1.0_all.deb
+  sudo dpkg -i deepfreezer_0.1.10_all.deb
   sudo systemctl start deepfreezer      # revise /etc/deepfreezer/config.json antes
   sudo apt remove deepfreezer           # remove (preserva config)
   sudo apt purge deepfreezer            # remove tudo
