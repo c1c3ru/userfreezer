@@ -471,34 +471,44 @@ class DeepFreezer(object):
             os.close(parent)
 
     def _commit_windows(self, parts, kind, directory, src=None):
-        # Compatível com Win7/3.8, sem sintaxe de PowerShell moderno.
-        # Revalidação de todos os componentes. Para mitigar TOCTOU,
-        # escreve primeiro em temporário e faz replace do nome final.
-        dst = self._check_commit_path(parts)
-        if kind == "W":
-            parent = os.path.dirname(dst)
-            os.makedirs(parent, exist_ok=True)
-            self._check_commit_path(parts)
-            tmp = os.path.join(parent, ".deepfreezer-%s.tmp" % secrets.token_hex(12))
-            try:
-                with open(src, "rb") as fin, open(tmp, "xb") as out:
-                    shutil.copyfileobj(fin, out)
-                    out.flush()
-                    os.fsync(out.fileno())
-                self._check_commit_path(parts)
-                os.replace(tmp, dst)
-            finally:
-                if os.path.lexists(tmp):
-                    os.unlink(tmp)
-        elif kind == "M":
-            os.makedirs(dst, exist_ok=True)
-            self._check_commit_path(parts)
-        elif kind == "D":
-            if directory:
-                if os.path.isdir(dst):
-                    shutil.rmtree(dst)  # sem ignore_errors; Win7 nao segue junction
-            elif os.path.lexists(dst):
-                os.unlink(dst)
+        # Cada ancestral e' aberto por handle Win32 (Win7+), validado
+        # como nao-reparse e mantido sem FILE_SHARE_DELETE ate a conclusao.
+        # Isso evita trocar um pai por junction entre check-then-use.
+        from win32_directory_guard import guarded_parent, secure_rmtree
+
+        try:
+            with guarded_parent(self.target, parts, create=kind in ("W", "M")):
+                dst = self._check_commit_path(parts)
+                if kind == "W":
+                    parent = os.path.dirname(dst)
+                    tmp = os.path.join(
+                        parent, ".deepfreezer-%s.tmp" % secrets.token_hex(12))
+                    try:
+                        with open(src, "rb") as fin, open(tmp, "xb") as out:
+                            shutil.copyfileobj(fin, out)
+                            out.flush()
+                            os.fsync(out.fileno())
+                        self._check_commit_path(parts)
+                        os.replace(tmp, dst)
+                    finally:
+                        if os.path.lexists(tmp):
+                            os.unlink(tmp)
+                elif kind == "M":
+                    try:
+                        os.mkdir(dst)
+                    except FileExistsError:
+                        self._check_commit_path(parts)
+                        if not os.path.isdir(dst):
+                            raise
+                elif kind == "D":
+                    if directory:
+                        if os.path.isdir(dst):
+                            secure_rmtree(self.target, parts)
+                    elif os.path.lexists(dst):
+                        os.unlink(dst)
+        except FileNotFoundError:
+            if kind != "D":
+                raise
 
     def _apply_commit(self):
         ordered = sorted(self.ops.items(), key=lambda kv: kv[1][0])
