@@ -289,3 +289,20 @@ no boot; tentar acessar o `.dfreezer` logado como usuário padrão (deve
 falhar); tentar `Stop-Service DeepFreezer` sem privilégio de
 administrador (deve ser negado); e, numa máquina Windows 7 real, que
 `deepfreezer_service_windows-7-8.exe` de fato inicia.
+
+## Estado real de enforcement (issue #51)
+
+O status **Running** do Windows Service Control Manager confirma apenas que o
+processo está iniciado. Não comprova que todos os diretórios foram congelados.
+Após cada tentativa de enforcement, o serviço grava
+`C:\\ProgramData\\DeepFreezer\\status.json` com acesso restrito a Administradores
+e SYSTEM (ACL aplicada antes da publicação). Como Administrador, rode
+`show_health.ps1` do ZIP de instalação, ou consulte diretamente esse JSON.
+
+O snapshot contém `state=healthy|degraded|error`, timestamp UTC e resultado por
+alvo, sem senhas. **`healthy` significa apenas que o último ciclo da API foi
+aplicado, não que as gravações externas ao aplicativo estejam protegidas.**
+Em caso de `error`, consultar `deepfreezer.log` e o Visualizador de Eventos.
+A bandeja ainda não é autorizada a comandar o serviço: isso requer IPC seguro
+(issue #53). Nenhum teste do CI substitui instalação em Windows 7 SP1 real.
+
