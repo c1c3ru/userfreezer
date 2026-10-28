@@ -118,6 +118,39 @@ class BrokerProtocolTests(unittest.TestCase):
                     decode_message(raw)
 
     @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_recusa_diretorio_gravavel_por_outros(self):
+        from admin_ipc import _validate_unix_socket_directory
+        folder = os.path.join(self.temp.name, "unsafe")
+        os.mkdir(folder)
+        os.chmod(folder, 0o777)
+        try:
+            with self.assertRaises(RuntimeError):
+                _validate_unix_socket_directory(folder)
+            with self.assertRaises(RuntimeError):
+                serve_unix(self.broker, os.path.join(folder, "admin.sock"),
+                           threading.Event())
+        finally:
+            os.chmod(folder, 0o700)
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_recusa_ancestral_symlink(self):
+        from admin_ipc import _validate_unix_socket_directory
+        original = os.path.join(self.temp.name, "real")
+        linked = os.path.join(self.temp.name, "link")
+        os.mkdir(original)
+        os.symlink(original, linked)
+        with self.assertRaises(RuntimeError):
+            _validate_unix_socket_directory(linked)
+        with self.assertRaises(RuntimeError):
+            serve_unix(self.broker, os.path.join(linked, "admin.sock"),
+                       threading.Event())
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
+    def test_socket_aceita_diretorio_privado(self):
+        from admin_ipc import _validate_unix_socket_directory
+        _validate_unix_socket_directory(self.temp.name)
+
+    @unittest.skipIf(os.name == "nt", "Unix socket")
     def test_unix_socket_peercred_status_para_nao_root(self):
         path = os.path.join(self.temp.name, "admin.sock")
         stop = threading.Event()
