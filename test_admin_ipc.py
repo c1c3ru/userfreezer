@@ -67,10 +67,33 @@ class BrokerProtocolTests(unittest.TestCase):
         self.assertTrue(a["result"]["frozen"])
         b = self.broker.process(msg("discard", self.target), is_admin=True)
         self.assertFalse(b["ok"], "Precisa de confirmacao explicita")
-        c = self.broker.process(
-            msg("discard", self.target, "DISCARD " + self.target), is_admin=True)
+        prepare = json.dumps({"v": 1, "id": str(uuid.uuid4()),
+                              "action": "prepare", "operation": "discard",
+                              "target": self.target}).encode("utf-8")
+        chall = self.broker.process(prepare, is_admin=True, identity="uid=0")
+        self.assertTrue(chall["ok"], chall)
+        token = chall["result"]["token"]
+        c = self.broker.process(msg("discard", self.target, token),
+                                is_admin=True, identity="uid=0")
         self.assertTrue(c["ok"], c)
         self.assertFalse(c["result"]["frozen"])
+        replay = self.broker.process(msg("discard", self.target, token),
+                                     is_admin=True, identity="uid=0")
+        self.assertFalse(replay["ok"], "nonce nao pode ser reutilizado")
+
+    def test_nonce_vinculado_ao_peer_e_acao(self):
+        prepare = json.dumps({"v": 1, "id": str(uuid.uuid4()),
+                              "action": "prepare", "operation": "commit",
+                              "target": self.target}).encode("utf-8")
+        a = self.broker.process(prepare, True, "uid=0")
+        self.assertTrue(a["ok"], a)
+        token = a["result"]["token"]
+        b = self.broker.process(msg("commit", self.target, token),
+                                True, "uid=999")
+        self.assertFalse(b["ok"])
+        c = self.broker.process(msg("commit", self.target, token),
+                                True, "uid=0")
+        self.assertFalse(c["ok"], "token consumido mesmo se usuario incorreto")
 
     def test_duplicate_fields_json_and_path_not_trusted(self):
         invalid = [
