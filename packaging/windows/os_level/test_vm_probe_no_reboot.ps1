@@ -8,6 +8,21 @@ $evidence = Join-Path $root "evidence"
 $probe = Join-Path $PSScriptRoot "vm_probe.ps1"
 New-Item -ItemType Directory -Force -Path $target, $evidence, $excluded | Out-Null
 try {
+    # A exclusao deve ser irma do alvo; nunca ficar dentro do proprio
+    # diretorio de escrita protegida. Falha ANTES de criar sentinelas.
+    $nested = Join-Path $target "nested"
+    New-Item -ItemType Directory -Force -Path $nested | Out-Null
+    $blocked = $false
+    try {
+        & $probe -Prepare -ProbeRoot $target -ExcludedRoot $nested -EvidenceDir $evidence -EvidenceIsExcluded
+    } catch {
+        if ($_.Exception.Message -notmatch "nao pode ficar dentro de ProbeRoot") { throw }
+        $blocked = $true
+    }
+    if (-not $blocked) { throw "ExcludedRoot aninhado foi aceito indevidamente" }
+    if (Test-Path (Join-Path $evidence "deepfreezer-probe-record.txt")) {
+        throw "Probe criou evidencias mesmo rejeitando caminho aninhado"
+    }
     & $probe -Prepare -ProbeRoot $target -ExcludedRoot $excluded -EvidenceDir $evidence -EvidenceIsExcluded
     $excludedMarker = Get-ChildItem -LiteralPath $excluded -Filter "deepfreezer-excluded-probe-*.txt"
     if (@($excludedMarker).Count -ne 1) {
