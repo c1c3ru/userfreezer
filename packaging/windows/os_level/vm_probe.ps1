@@ -50,8 +50,10 @@ if ($Prepare) {
         if ([IO.Path]::GetPathRoot($excludedAbs) -ne $probeVolume) {
             throw "ExcludedRoot deve estar no MESMO volume protegido"
         }
+        $probePrefix = $probeAbs.TrimEnd([char]92) +
+                       [string][IO.Path]::DirectorySeparatorChar
         if ($excludedAbs -eq $probeAbs -or
-            $excludedAbs.StartsWith($probeAbs.TrimEnd("\\") + "\\",
+            $excludedAbs.StartsWith($probePrefix,
                                      [StringComparison]::OrdinalIgnoreCase)) {
             throw "ExcludedRoot nao pode ficar dentro de ProbeRoot"
         }
