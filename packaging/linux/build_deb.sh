@@ -29,6 +29,7 @@ install -m 0755 "$SRC_DIR/deepfreezerd.py" "$STAGE/opt/deepfreezer/deepfreezerd.
 install -m 0755 "$SRC_DIR/overlayfs_session.py" "$STAGE/opt/deepfreezer/overlayfs_session.py"
 install -m 0644 "$REPO_ROOT/packaging/config.example.json" "$STAGE/etc/deepfreezer/config.json"
 install -m 0644 "$SRC_DIR/deepfreezer.service" "$STAGE/etc/systemd/system/deepfreezer.service"
+install -m 0644 "$SRC_DIR/deepfreezer-overlayfs@.service" "$STAGE/etc/systemd/system/deepfreezer-overlayfs@.service"
 
 install -m 0755 "$SRC_DIR/debian/postinst" "$STAGE/DEBIAN/postinst"
 install -m 0755 "$SRC_DIR/debian/prerm" "$STAGE/DEBIAN/prerm"
