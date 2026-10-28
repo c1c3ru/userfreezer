@@ -23,8 +23,11 @@ orfaos (crash entre as etapas) sao ignorados na reabertura.
 import argparse
 import hashlib
 import json
+import ntpath
 import os
+import secrets
 import shutil
+import stat
 import sys
 import time
 
@@ -268,29 +271,195 @@ class DeepFreezer(object):
     def __exit__(self, *exc):
         self.close()
 
+    def _commit_parts(self, rel):
+        """Rejeita caminhos ambiguos e rotas que podem sair do alvo."""
+        if not isinstance(rel, str) or not rel or "\x00" in rel:
+            raise DeepFreezeError("caminho de commit invalido")
+        path = rel.replace("\\", "/")
+        if path.startswith("/") or ntpath.splitdrive(path)[0]:
+            raise DeepFreezeError("caminho absoluto nao permitido no commit")
+        parts = path.split("/")
+        if any(p in ("", ".", "..") for p in parts):
+            raise DeepFreezeError("componente de caminho invalido no commit")
+        if os.name == "nt":
+            for part in parts:
+                # ADS, nomes especiais e aliases (pontos/espacos finais).
+                name = part.split(".")[0].upper()
+                reserved = ("CON", "PRN", "AUX", "NUL",
+                            "COM1", "COM2", "COM3", "COM4", "COM5",
+                            "COM6", "COM7", "COM8", "COM9",
+                            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+                            "LPT6", "LPT7", "LPT8", "LPT9")
+                if (":" in part or part[-1] in (" ", ".")
+                        or name in reserved):
+                    raise DeepFreezeError("nome de arquivo inseguro no Windows: %r" % part)
+        return parts
+
+    @staticmethod
+    def _is_reparse(path):
+        """Windows 7/Python 3.8: detecta junctions e outros reparse points."""
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            return False
+        attrs = getattr(info, "st_file_attributes", 0)
+        return (stat.S_ISLNK(info.st_mode) or
+                bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)))
+
+    def _check_commit_path(self, parts):
+        # Preflight de toda a cadeia. Os caminhos sao revalidados antes de
+        # cada operacao. Em POSIX as mutacoes usam dir_fd + O_NOFOLLOW.
+        if self._is_reparse(self.target):
+            raise DeepFreezeError("alvo do commit e link/reparse point")
+        current = self.target
+        for part in parts:
+            current = os.path.join(current, part)
+            if self._is_reparse(current):
+                raise DeepFreezeError("link/reparse point nao permitido: %s" % current)
+        final = os.path.abspath(current)
+        root = os.path.abspath(self.target)
+        try:
+            inside = os.path.commonpath((os.path.normcase(root),
+                                         os.path.normcase(final))) == os.path.normcase(root)
+        except ValueError:
+            inside = False
+        if not inside:
+            raise DeepFreezeError("caminho fora do alvo")
+        return _long(final)
+
+    def _commit_parent_fd(self, parts, create=False):
+        """Abre diretórios relativos ao FD raiz sem seguir links (POSIX)."""
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fd = os.open(self.target, flags)
+        try:
+            for part in parts[:-1]:
+                try:
+                    child = os.open(part, flags, dir_fd=fd)
+                except FileNotFoundError:
+                    if not create:
+                        raise
+                    os.mkdir(part, dir_fd=fd)
+                    child = os.open(part, flags, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+
+    @staticmethod
+    def _remove_tree_fd(fd):
+        """Apaga filhos via dir_fd, sem seguir symlink durante a travessia."""
+        for entry in os.scandir(fd):
+            if entry.is_dir(follow_symlinks=False):
+                child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY |
+                                os.O_NOFOLLOW, dir_fd=fd)
+                try:
+                    DeepFreezer._remove_tree_fd(child)
+                finally:
+                    os.close(child)
+                os.rmdir(entry.name, dir_fd=fd)
+            else:
+                os.unlink(entry.name, dir_fd=fd)
+
+    def _commit_posix(self, parts, kind, directory, src=None):
+        try:
+            parent = self._commit_parent_fd(parts, create=kind in ("W", "M"))
+        except FileNotFoundError:
+            if kind == "D":
+                return
+            raise
+        try:
+            name = parts[-1]
+            # Nunca operar em link existente (incluindo symlink quebrado).
+            self._check_commit_path(parts)
+            if kind == "W":
+                tmp = ".deepfreezer-%s.tmp" % secrets.token_hex(12)
+                fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                             0o600, dir_fd=parent)
+                try:
+                    with os.fdopen(fd, "wb") as out, open(src, "rb") as fin:
+                        shutil.copyfileobj(fin, out)
+                        out.flush()
+                        os.fsync(out.fileno())
+                    # replace() troca o link em si, nunca segue o destino.
+                    self._check_commit_path(parts)
+                    os.replace(tmp, name, src_dir_fd=parent, dst_dir_fd=parent)
+                finally:
+                    try:
+                        os.unlink(tmp, dir_fd=parent)
+                    except FileNotFoundError:
+                        pass
+            elif kind == "M":
+                try:
+                    os.mkdir(name, dir_fd=parent)
+                except FileExistsError:
+                    self._check_commit_path(parts)
+                    if not os.path.isdir(os.path.join(self.target, *parts)):
+                        raise
+            elif kind == "D":
+                try:
+                    if directory:
+                        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY |
+                                     os.O_NOFOLLOW, dir_fd=parent)
+                        try:
+                            self._remove_tree_fd(fd)
+                        finally:
+                            os.close(fd)
+                        os.rmdir(name, dir_fd=parent)
+                    else:
+                        os.unlink(name, dir_fd=parent)
+                except FileNotFoundError:
+                    pass
+        finally:
+            os.close(parent)
+
+    def _commit_windows(self, parts, kind, directory, src=None):
+        # Compatível com Win7/3.8, sem sintaxe de PowerShell moderno.
+        # Revalidação de todos os componentes. Para mitigar TOCTOU,
+        # escreve primeiro em temporário e faz replace do nome final.
+        dst = self._check_commit_path(parts)
+        if kind == "W":
+            parent = os.path.dirname(dst)
+            os.makedirs(parent, exist_ok=True)
+            self._check_commit_path(parts)
+            tmp = os.path.join(parent, ".deepfreezer-%s.tmp" % secrets.token_hex(12))
+            try:
+                with open(src, "rb") as fin, open(tmp, "xb") as out:
+                    shutil.copyfileobj(fin, out)
+                    out.flush()
+                    os.fsync(out.fileno())
+                self._check_commit_path(parts)
+                os.replace(tmp, dst)
+            finally:
+                if os.path.lexists(tmp):
+                    os.unlink(tmp)
+        elif kind == "M":
+            os.makedirs(dst, exist_ok=True)
+            self._check_commit_path(parts)
+        elif kind == "D":
+            if directory:
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst)  # sem ignore_errors; Win7 nao segue junction
+            elif os.path.lexists(dst):
+                os.unlink(dst)
+
     def _apply_commit(self):
         ordered = sorted(self.ops.items(), key=lambda kv: kv[1][0])
-        for rel, (s, k, d) in ordered:
-            dst = _long(os.path.join(self.target, *rel.split("/")))
-            if k == "W":
-                os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
-                src = self._payload_path(rel)
-                with open(src, "rb") as fin, open(dst, "wb") as fout:
-                    shutil.copyfileobj(fin, fout)
-                    fout.flush()
-                    os.fsync(fout.fileno())
-            elif k == "M":
-                os.makedirs(dst, exist_ok=True)
-            elif k == "D":
-                if d == 1:
-                    if os.path.isdir(dst) and not os.path.islink(dst):
-                        shutil.rmtree(dst, ignore_errors=True)
-                elif os.path.isfile(dst) or os.path.islink(dst):
-                    try:
-                        os.unlink(dst)
-                    except PermissionError:
-                        raise DeepFreezeError(
-                            "nao consegui remover %s (arquivo em uso?)" % dst)
+        prepared = []
+        for rel, (seq, kind, directory) in ordered:
+            if kind not in KIND_SUBDIR:
+                raise DeepFreezeError("operacao invalida no commit")
+            parts = self._commit_parts(rel)
+            self._check_commit_path(parts)
+            src = self._payload_path(rel) if kind == "W" else None
+            prepared.append((parts, kind, directory, src))
+        for parts, kind, directory, src in prepared:
+            self._check_commit_path(parts)
+            if os.name == "nt":
+                self._commit_windows(parts, kind, directory, src)
+            else:
+                self._commit_posix(parts, kind, directory, src)
 
     # -- helpers ------------------------------------------------------------
     def _require_frozen(self):

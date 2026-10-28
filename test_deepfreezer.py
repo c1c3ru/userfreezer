@@ -370,6 +370,73 @@ class ThawDiscardTests(BaseCase):
 # ---------------------------------------------------------------------------
 # 4. thaw --commit: merge
 # ---------------------------------------------------------------------------
+
+
+class CommitPathIsolationTests(BaseCase):
+    def test_commit_rejeita_symlink_intermediario(self):
+        outside = os.path.join(self.tmp, "fora")
+        os.makedirs(outside)
+        link = os.path.join(self.target, "link")
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Criacao de symlink exige permissao ou suporte do SO")
+        df = self.frozen_df()
+        df.write("link/segredo.txt", b"nao sair do alvo")
+        with self.assertRaises(DeepFreezeError):
+            df.thaw(commit=True)
+        self.assertFalse(os.path.exists(os.path.join(outside, "segredo.txt")))
+        self.assertTrue(df.frozen)
+
+    def test_commit_nao_sobrescreve_symlink_final(self):
+        outside = os.path.join(self.tmp, "externo.txt")
+        with open(outside, "wb") as f:
+            f.write(b"original")
+        link = os.path.join(self.target, "link.txt")
+        try:
+            os.symlink(outside, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("Criacao de symlink exige permissao ou suporte do SO")
+        df = self.frozen_df()
+        df.write("link.txt", b"nao alterar externo")
+        with self.assertRaises(DeepFreezeError):
+            df.thaw(commit=True)
+        with open(outside, "rb") as f:
+            self.assertEqual(f.read(), b"original")
+
+    def test_commit_rejeita_traversal_injetado_no_journal(self):
+        df = self.frozen_df()
+        df.ops["../escapou.txt"] = (999, "W", 0)
+        df._write_payloads["../escapou.txt"] = "0000000000000001"
+        with self.assertRaises(DeepFreezeError):
+            df.thaw(commit=True)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "escapou.txt")))
+
+    def test_commit_rejeita_paths_ambiguous_em_qualquer_so(self):
+        df = self.frozen_df()
+        for bad in ("C:/Windows/teste", "../fora", r"sub\\..\\fora",
+                    r"\\\\servidor\\share", "/tmp/fora",
+                    "sub//dupla", "sub/./rel", "a\x00b"):
+            with self.subTest(bad=repr(bad)):
+                with self.assertRaises(DeepFreezeError):
+                    df._commit_parts(bad)
+
+    def test_commit_preflight_evitar_aplicacao_parcial(self):
+        outside = os.path.join(self.tmp, "fora")
+        os.makedirs(outside)
+        link = os.path.join(self.target, "link")
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Criacao de symlink exige permissao ou suporte do SO")
+        df = self.frozen_df()
+        df.write("a.txt", b"mudanca que nao deve ser aplicada")
+        df.write("link/evil.txt", b"x")
+        with self.assertRaises(DeepFreezeError):
+            df.thaw(commit=True)
+        self.assertDiskIntact() if not os.path.islink(link) else self.assertEqual(
+            open(os.path.join(self.target, "a.txt"), "rb").read(), self.TREE["a.txt"])
+
 class ThawCommitTests(BaseCase):
     def test_commit_aplica_write_mkdirs_e_remove_no_disco(self):
         df = self.frozen_df()
