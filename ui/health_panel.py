@@ -7,10 +7,11 @@ autoriza cada pedido, usando o token do SO. Uma sessao comum pode VER
 status; operacoes falham sem token elevado/root.
 """
 import argparse
+import json
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 
 UI_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(UI_DIR)
@@ -28,6 +29,7 @@ class AdminPanel(object):
         self.root.title("DeepFreezer - Gerenciamento local autenticado")
         self.root.geometry("1060x560")
         self.entries = {}
+        self.last_snapshot = None
 
         header = ttk.Frame(root, padding=12)
         header.pack(fill="x")
@@ -44,7 +46,7 @@ class AdminPanel(object):
         self.table = ttk.Treeview(body, columns=columns, show="headings",
                                   selectmode="browse")
         labels = {"target": "Alvo", "state": "Enforcement / agora", "paths": "Base / pendentes",
-                  "overlay": "Overlay", "error": "Falha"}
+                  "overlay": "Overlay / tamanho", "error": "Falha"}
         widths = {"target": 235, "state": 160, "paths": 120,
                   "overlay": 300, "error": 265}
         for key in columns:
@@ -59,6 +61,7 @@ class AdminPanel(object):
         footer = ttk.Frame(root, padding=12)
         footer.pack(fill="x")
         ttk.Button(footer, text="Atualizar", command=self.refresh).pack(side="left", padx=2)
+        ttk.Button(footer, text="Exportar diagnostico", command=self.export).pack(side="left", padx=2)
         ttk.Button(footer, text="Congelar", command=lambda: self.action("freeze")).pack(side="left", padx=2)
         ttk.Button(footer, text="Descartar", command=lambda: self.action("discard")).pack(side="left", padx=2)
         ttk.Button(footer, text="Aplicar (commit)", command=lambda: self.action("commit")).pack(side="left", padx=2)
@@ -83,6 +86,7 @@ class AdminPanel(object):
         for item in self.table.get_children():
             self.table.delete(item)
         self.entries.clear()
+        self.last_snapshot = snapshot
         self.status.config(text="Ultimo enforcement: %s | Estado: %s | Alvos: %d" %
                            (snapshot.get("timestamp"), snapshot.get("state"),
                             len(snapshot.get("targets", []))))
@@ -99,11 +103,38 @@ class AdminPanel(object):
             self.table.insert("", "end", iid=iid, values=(
                 target, "%s / %s" % (entry.get("state", "error"), now_state),
                 "%s / %s" % (entry.get("baseline_paths", 0), pending),
-                entry.get("overlay", ""), error))
+                "%s (%s bytes%s)" % (
+                    entry.get("overlay", ""),
+                    entry.get("overlay_bytes", "?"),
+                    "+" if entry.get("overlay_size_partial") else ""), error))
             if target == selected:
                 self.table.selection_set(iid)
                 self.table.focus(iid)
         self.preselect = None
+
+    def export(self):
+        if self.last_snapshot is None:
+            messagebox.showwarning("DeepFreezer", "Nenhum diagnostico disponivel.",
+                                   parent=self.root)
+            return
+        destination = filedialog.asksaveasfilename(
+            parent=self.root, title="Exportar diagnostico",
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json")])
+        if not destination:
+            return
+        try:
+            # O snapshot IPC nao inclui credenciais/hash/senha, somente
+            # estados, nomes de alvos e mensagens tecnicas.
+            with open(destination, "w", encoding="utf-8") as f:
+                json.dump(self.last_snapshot, f, indent=2, ensure_ascii=False)
+                f.write("\\n")
+        except OSError as exc:
+            messagebox.showerror("Falha na exportacao", str(exc), parent=self.root)
+            return
+        messagebox.showinfo("DeepFreezer",
+                            "Diagnostico exportado (sem credenciais).",
+                            parent=self.root)
 
     def selected_target(self):
         current = self.table.selection()
