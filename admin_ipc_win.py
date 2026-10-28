@@ -51,14 +51,16 @@ def serve_windows(broker, stop_event=None, log=None):
     attrs = sec.SECURITY_ATTRIBUTES()
     attrs.SECURITY_DESCRIPTOR = sec.ConvertStringSecurityDescriptorToSecurityDescriptor(
         sddl, sec.SDDL_REVISION_1)
-    while stop_event is None or not stop_event.is_set():
-        handle = win32pipe.CreateNamedPipe(
-            PIPE_NAME,
-            win32pipe.PIPE_ACCESS_DUPLEX | 0x00080000,  # FIRST_PIPE_INSTANCE
-            win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_READMODE_MESSAGE |
-            win32pipe.PIPE_WAIT | 0x00000008,  # REJECT_REMOTE_CLIENTS
-            1, MAX_BYTES, MAX_BYTES, 5000, attrs)
-        try:
+    # Instancia inicial unica: o handle permanece aberto entre clientes,
+    # impedindo sequestro do nome no intervalo entre duas conexoes.
+    handle = win32pipe.CreateNamedPipe(
+        PIPE_NAME,
+        win32pipe.PIPE_ACCESS_DUPLEX | 0x00080000,  # FIRST_PIPE_INSTANCE
+        win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_READMODE_MESSAGE |
+        win32pipe.PIPE_WAIT | 0x00000008,  # REJECT_REMOTE_CLIENTS
+        1, MAX_BYTES, MAX_BYTES, 5000, attrs)
+    try:
+        while stop_event is None or not stop_event.is_set():
             try:
                 win32pipe.ConnectNamedPipe(handle, None)
             except pywintypes.error as exc:
@@ -80,11 +82,11 @@ def serve_windows(broker, stop_event=None, log=None):
             if len(encoded) <= MAX_BYTES:
                 win32file.WriteFile(handle, encoded)
             win32pipe.DisconnectNamedPipe(handle)
-        finally:
-            win32file.CloseHandle(handle)
+    finally:
+        win32file.CloseHandle(handle)
 
 
-def request_windows(action="status", target=None, confirm=None):
+def request_windows(action="status", target=None, confirm=None, operation=None):
     from admin_ipc import decode_reply
     _pywintypes, _api, con, win32file, win32pipe, _sec = _dependencies()
     win32pipe.WaitNamedPipe(PIPE_NAME, 5000)
@@ -96,6 +98,8 @@ def request_windows(action="status", target=None, confirm=None):
         obj["target"] = target
     if confirm is not None:
         obj["confirm"] = confirm
+    if operation is not None:
+        obj["operation"] = operation
     raw = json.dumps(obj, separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_BYTES:
         raise ValueError("request muito grande")
