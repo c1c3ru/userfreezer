@@ -170,6 +170,69 @@ class FreezeTests(BaseCase):
 # ---------------------------------------------------------------------------
 # 2. escrita por cima: a view muda, o disco real nao
 # ---------------------------------------------------------------------------
+class ImplicitDirectoryTests(BaseCase):
+    def test_diretorio_gerado_por_write_e_navegavel(self):
+        df = self.frozen_df()
+        df.write("novo/sub/arquivo.txt", b"teste")
+        self.assertIn("novo", df.iterdir(""))
+        self.assertTrue(df.exists("novo"))
+        self.assertTrue(df.is_dir("novo"))
+        self.assertTrue(df.exists("novo/sub"))
+        self.assertTrue(df.is_dir("novo/sub"))
+        self.assertEqual(df.iterdir("novo"), ["sub"])
+        self.assertEqual(df.iterdir("novo/sub"), ["arquivo.txt"])
+        self.assertEqual(df.read("novo/sub/arquivo.txt"), b"teste")
+
+    def test_exclusao_de_pai_oculta_filhos_mais_antigos(self):
+        df = self.frozen_df()
+        df.write("novo/antigo.txt", b"antigo")
+        df.remove("novo")
+        self.assertFalse(df.exists("novo"))
+        self.assertFalse(df.exists("novo/antigo.txt"))
+        with self.assertRaises(FileNotFoundError):
+            df.iterdir("novo")
+        with self.assertRaises(FileNotFoundError):
+            df.size("novo/antigo.txt")
+        self.assertNotIn("novo", df.iterdir(""))
+
+    def test_arquivo_novo_recria_pai_excluido_sem_ressuscitar_irmaos(self):
+        df = self.frozen_df()
+        df.write("novo/antigo.txt", b"antigo")
+        df.remove("novo")
+        df.write("novo/novo.txt", b"novo")
+        self.assertTrue(df.exists("novo"))
+        self.assertTrue(df.is_dir("novo"))
+        self.assertEqual(df.iterdir("novo"), ["novo.txt"])
+        self.assertFalse(df.exists("novo/antigo.txt"))
+
+    def test_remove_diretorio_fisico_e_recria_virtualmente(self):
+        df = self.frozen_df()
+        df.remove("sub")
+        self.assertFalse(df.exists("sub/c.txt"))
+        df.write("sub/novinho.txt", b"novo")
+        self.assertEqual(df.iterdir("sub"), ["novinho.txt"])
+        self.assertFalse(df.exists("sub/c.txt"))
+        self.assertFalse(df.exists("sub/deep"))
+        self.assertDiskIntact()
+
+    def test_reabertura_journal_preserva_diretorios_implicitos(self):
+        df = self.frozen_df()
+        df.write("projeto/a/b.txt", b"ok")
+        df.close()
+        reopened = self.open_df()
+        self.assertTrue(reopened.exists("projeto/a"))
+        self.assertEqual(reopened.iterdir("projeto/a"), ["b.txt"])
+
+    def test_diretorio_removido_e_recriado_nao_ressuscita_baseline(self):
+        df = self.frozen_df()
+        df.remove("sub")
+        df.mkdirs("sub")
+        self.assertTrue(df.exists("sub"))
+        self.assertEqual(df.iterdir("sub"), [])
+        df.write("sub/x.txt", b"novo")
+        self.assertEqual(df.iterdir("sub"), ["x.txt"])
+
+
 class OverlayWriteTests(BaseCase):
     def test_write_sobre_arquivo_existente_nao_toca_no_disco(self):
         df = self.frozen_df()

@@ -604,33 +604,55 @@ class DeepFreezer(object):
 
     # -- resolucao baseline/overlay ------------------------------------------
     def _classify(self, parts):
-        n = len(parts)
-        if n == 0:
+        """Resolve a view: ultima operacao sobre o caminho/ancestrais,
+        seguida de descendentes que podem recriar diretorios implicitos.
+
+        Uma exclusao de pai invalida operacoes anteriores nos filhos.
+        Uma escrita posterior em filho recria o pai virtualmente.
+        """
+        if not parts:
             return "BASE"
         full = "/".join(parts)
-        best_i = 0
-        for i in range(n, 0, -1):
-            if "/".join(parts[:i]) in self.ops:
-                best_i = i
+        # Operacao mais recente que cobre diretamente este caminho.
+        covering = None
+        covering_path = None
+        for i in range(1, len(parts) + 1):
+            key = "/".join(parts[:i])
+            rec = self.ops.get(key)
+            if rec is not None and (covering is None or rec[0] > covering[0]):
+                covering, covering_path = rec, key
+
+        anchor_seq = covering[0] if covering is not None else 0
+        # Existem filhos escritos/criados APOS a ultima operacao neste
+        # caminho/ancestral? Ignora descendentes invalidados por pai mais
+        # recente (inclusive D e W).
+        prefix = full + "/"
+        has_live_child = False
+        for child, (seq, kind, _is_dir) in self.ops.items():
+            if not child.startswith(prefix) or kind == "D" or seq <= anchor_seq:
+                continue
+            segments = child.split("/")
+            shadowed = False
+            for i in range(1, len(segments)):
+                parent_key = "/".join(segments[:i])
+                parent_op = self.ops.get(parent_key)
+                if parent_op is not None and parent_op[0] > seq:
+                    shadowed = True
+                    break
+            if not shadowed:
+                has_live_child = True
                 break
-        if best_i == 0:
-            return "BASE"
-        bseq, bkind, _bd = self.ops["/".join(parts[:best_i])]
-        prefix = "/".join(parts[:best_i]) + "/"
-        best_re = None
-        for k, (s, kk, dd) in self.ops.items():
-            if k.startswith(prefix) and s > bseq:
-                cand = (len(k), s, k, kk)
-                if best_re is None or cand > best_re:
-                    best_re = cand
-        if best_re is not None:
-            _, _, rk, rkk = best_re
-            if rk == full:
-                return {"W": "NEW", "M": "M_DIR", "D": "DELETED"}[rkk]
-            return {"W": "GONE", "M": "IMPLICIT_DIR", "D": "GONE"}[rkk]
-        if best_i == n:
-            return {"W": "NEW", "M": "M_DIR", "D": "DELETED"}[bkind]
-        return {"W": "GONE", "M": "IMPLICIT_DIR", "D": "GONE"}[bkind]
+
+        if covering is None:
+            return "IMPLICIT_DIR" if has_live_child else "BASE"
+        if covering_path == full:
+            kind = covering[1]
+            if kind == "D":
+                return "IMPLICIT_DIR" if has_live_child else "DELETED"
+            if kind == "M":
+                return "M_DIR"
+            return "IMPLICIT_DIR" if has_live_child else "NEW"
+        return "IMPLICIT_DIR" if has_live_child else "GONE"
 
     # -- API ------------------------------------------------------------------
     def write(self, rel, data):
@@ -715,6 +737,10 @@ class DeepFreezer(object):
         c = self._classify(parts)
         if c == "NEW":
             return os.path.getsize(self._payload_path("/".join(parts)))
+        if c in ("DELETED", "GONE"):
+            raise FileNotFoundError(rel)
+        if c in ("M_DIR", "IMPLICIT_DIR"):
+            raise IsADirectoryError(rel)
         return os.stat(_long(os.path.join(self.target, *parts))).st_size
 
     def iterdir(self, rel=""):
@@ -723,6 +749,8 @@ class DeepFreezer(object):
         c = self._classify(parts)
         if c == "NEW":
             raise DeepFreezeError("nao e diretorio: %r" % rel)
+        if c in ("DELETED", "GONE"):
+            raise FileNotFoundError(rel)
         prefix = ("/".join(parts) + "/") if parts else ""
         names = set()
         if c == "BASE":
