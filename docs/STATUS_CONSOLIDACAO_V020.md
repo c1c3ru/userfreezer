@@ -8,7 +8,7 @@ issues [#63](https://github.com/c1c3ru/userfreezer/issues/63),
 [#56](https://github.com/c1c3ru/userfreezer/issues/56). Atualize-o em cada PR
 que altere os critérios de aceite, junto com o comentário na issue.
 
-**Versão-alvo para a nova bateria de testes:** `v0.1.13` (confirmar publicação da tag e hashes antes da validação). A `v0.2.0` **não foi
+**Versão pública de validação confirmada:** [v0.1.13](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.13), publicada em 28/10/2026. Tag, `main` e workflow apontam ao mesmo commit `b8ac4e85e07f3907a49238d18e6bdf98f5ab3e36`. [CI #40753516522](https://github.com/c1c3ru/userfreezer/actions/runs/40753516522) terminou `success` com 7 artefatos (`.deb`, dois `.exe`, dois `.zip`, SHA256SUMS, SPDX). Compare os hashes antes dos testes de VM. A `v0.2.0` **não foi
 publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
 ## Estado por issue
@@ -43,6 +43,19 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
 5. **Release v0.2.0:** publicar somente quando o CI, as VMs aplicáveis,
    a matriz de suporte e os artefatos (hashes/proveniência) estiverem
    consistentes com os recursos anunciados.
+
+## Release e testes de VM pendentes
+
+A v0.1.13 é a primeira versão que reúne o unit opt-in Linux e os
+protótipos nativos NT, mantendo o commit Windows de produção
+**bloqueado**. O teste do Windows 7 deve usar
+`deepfreezer_service_windows-7-8.exe` desta release e anexar logs
+de serviço, IPC, UAC, GUI, hashes e resultados ao GitHub; o build em
+runner moderno não comprova compatibilidade real do SP1.
+
+Testes UWF/EWF/VHDX/WinPE, reboot, exclusões, rollback e estado de boot
+continuam pendentes para #49/#54. Não publicar v0.2.0 como concluída
+sem a evidência dessas plataformas ou redução explícita do escopo.
 
 ## Regras de evidência
 
