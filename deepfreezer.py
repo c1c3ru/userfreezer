@@ -13,8 +13,10 @@ Modelo (equivalente ao Deep Freeze comercial):
   thaw(commit=True)  : merge do overlay em T e descarte.
 
 Layout do overlay (default: <T>.dfreezer):
-  LOCK, manifest.json, journal.log
-  files/<rel>  (conteudo novo/alterado)   md/<rel> (mkdir)   del/<rel> (tombstone)
+  manifest.json, journal.log, payloads/<id>, md/<rel>, del/<rel>
+  <T>.dfreezer.lock (trava externa persistente)
+  <T>.dfreezer.discarding (marcador de recuperacao, transitorio)
+  files/<rel> (payload legado de overlays antigos)
 
 Crash-safety: cada op = (1) payload escrito atomicamente (tmp+rename),
 (2) linha de journal + fsync. Journal e' a fonte da verdade; payloads
@@ -53,8 +55,8 @@ class _Lock(object):
     """Trava um byte do arquivo LOCK; o kernel solta a trava se o processo cair.
 
     Nao remove o arquivo no release: apagar um arquivo de lock cria uma
-    corrida entre processos que abriram inodes/handles diferentes. O proprio
-    thaw remove o arquivo junto com o overlay, apos fechar o handle.
+    corrida entre processos que abriram inodes/handles diferentes. O lock
+    fica como IRMAO do overlay e permanece apos thaw().
     Suporta Python 3.8/Windows 7 (msvcrt) e Linux (fcntl), sem dependencias.
     """
 
@@ -147,25 +149,72 @@ class DeepFreezer(object):
         self.ops = {}      # rel -> (seq, kind 'W'|'M'|'D', d: 0=arquivo 1=dir)
         self._write_payloads = {}  # rel -> ID imutavel de escrita confirmada
         self._seq = 0
-        self._lock = _Lock(os.path.join(self.overlay, "LOCK"), lock_timeout)
+        # Trava FORA do overlay: permite deletar seu conteudo com a trava
+        # ainda adquirida, inclusive no Windows 7 (arquivo aberto no NTFS
+        # nao pode ser apagado como parte do rmtree).
+        self._lock = _Lock(self.overlay + ".lock", lock_timeout)
+        self._discard_marker = self.overlay + ".discarding"
+        self._discarding = False
         self._open()
 
     # -- ciclo de vida ------------------------------------------------------
     def _open(self):
-        if os.path.isdir(self.overlay):
-            self._lock.acquire()
-            try:
+        # A trava protege freeze(), thaw() E a remocao. Nao se admite
+        # outra instancia enquanto um overlay esta em descarte.
+        parent = os.path.dirname(self.overlay)
+        os.makedirs(parent, exist_ok=True)
+        self._lock.acquire()
+        try:
+            if os.path.isfile(self._discard_marker):
+                # Crash durante rmtree: a marca fica fora do overlay e
+                # sobrevive mesmo se manifest/LOCK foram removidos.
+                self._finish_discard()
+            if os.path.isdir(self.overlay):
+                # Compatibilidade: se um processo de versao antiga ainda
+                # segura overlay/LOCK, recusar abrir. Nao executar duas
+                # versoes simultaneamente (elas usam travas diferentes).
+                legacy = os.path.join(self.overlay, "LOCK")
+                if os.path.isfile(legacy):
+                    legacy_lock = _Lock(legacy, self._lock.timeout)
+                    try:
+                        legacy_lock.acquire()
+                    finally:
+                        legacy_lock.release()
                 man = self._jread(os.path.join(self.overlay, "manifest.json"))
                 if man is None:
                     raise DeepFreezeError("overlay existe sem manifest (corrompido?)")
                 self.manifest = man
                 self.frozen = True
                 self._load_journal()
-            except BaseException:
-                self._lock.release()
-                raise
-        elif os.path.exists(self.overlay):
-            raise DeepFreezeError("caminho do overlay ja existe (nao eh dir)")
+            elif os.path.lexists(self.overlay):
+                raise DeepFreezeError("caminho do overlay ja existe (nao eh dir)")
+        except BaseException:
+            self._lock.release()
+            raise
+
+    def _finish_discard(self):
+        # Chamado EXCLUSIVAMENTE com a trava externa em posse desta instancia.
+        try:
+            if os.path.isdir(self.overlay):
+                shutil.rmtree(self.overlay)
+            elif os.path.lexists(self.overlay):
+                raise DeepFreezeError("overlay nao e diretorio: %s" % self.overlay)
+            if os.path.lexists(self.overlay):
+                raise DeepFreezeError("overlay nao foi completamente descartado")
+            if os.path.exists(self._discard_marker):
+                os.unlink(self._discard_marker)
+        except OSError as exc:
+            raise DeepFreezeError(
+                "falha ao descartar overlay %s: %s (sera recuperado na "
+                "proxima abertura)" % (self.overlay, exc)) from exc
+
+    def _clear_frozen_state(self):
+        self.frozen = False
+        self.manifest = None
+        self.ops = {}
+        self._write_payloads = {}
+        self._seq = 0
+        self._discarding = False
 
     def _load_journal(self):
         best_seq = 0
@@ -231,9 +280,9 @@ class DeepFreezer(object):
                     ent["sha256"] = self._sha256(p)
                     hashes[rel] = ent["sha256"]
                 entries[rel] = ent
+        if self._lock.fd is None or self._discarding:
+            raise DeepFreezeError("instancia fechada ou descarte pendente")
         os.makedirs(self.overlay, exist_ok=True)
-        if not self.frozen:
-            self._lock.acquire()
         man = {"v": DF_VERSION, "root": self.target,
                "frozen_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                "entries": entries, "hashes": hashes}
@@ -248,19 +297,26 @@ class DeepFreezer(object):
         return {"seconds": round(time.time() - t0, 3), "paths": len(entries)}
 
     def thaw(self, commit=False):
+        if self._lock.fd is None:
+            raise DeepFreezeError("instancia fechada")
+        if self._discarding:
+            # Permite repetir a limpeza depois de uma falha de I/O.
+            self._finish_discard()
+            self._clear_frozen_state()
+            return
         if not self.frozen:
             raise DeepFreezeError("nada congelado para descongelar")
         if commit:
             self._apply_commit()
-        # o LOCK mora dentro do overlay e fica aberto ate' o release(); no
-        # Windows nao se apaga arquivo aberto, entao soltar antes do rmtree
-        self._lock.release()
-        shutil.rmtree(self.overlay, ignore_errors=True)
-        self.frozen = False
-        self.manifest = None
-        self.ops = {}
-        self._write_payloads = {}
-        self._seq = 0
+        # Escreve a marca de descarte em arquivo IRMAO antes de iniciar
+        # o rmtree. A marca persiste se o processo morrer no meio.
+        # Na proxima abertura, _open() conclui a limpeza antes de aceitar
+        # novas operacoes. Nao apagar a trava externa aqui: ela evita
+        # reabertura enquanto o rmtree esta em andamento.
+        self._jwrite(self._discard_marker, b'{"state":"discarding"}')
+        self._discarding = True
+        self._finish_discard()
+        self._clear_frozen_state()
 
     def close(self):
         self._lock.release()
@@ -463,7 +519,9 @@ class DeepFreezer(object):
 
     # -- helpers ------------------------------------------------------------
     def _require_frozen(self):
-        if not self.frozen:
+        if self._discarding:
+            raise DeepFreezeError("overlay em descarte pendente; conclua thaw()")
+        if not self.frozen or self._lock.fd is None:
             raise DeepFreezeError("chame freeze() antes")
 
     @staticmethod
