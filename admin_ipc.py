@@ -81,6 +81,28 @@ def load_targets(config_path):
     return result
 
 
+def overlay_usage(path, file_limit=5000):
+    """Limita o custo da contagem e nunca segue symlinks dos arquivos."""
+    import stat
+    if not os.path.isdir(path) or os.path.islink(path):
+        return 0, False
+    total, counted = 0, 0
+    for root, dirs, filenames in os.walk(path, followlinks=False):
+        # Arestas reparse ou symlink nao sao percorridas.
+        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
+        for name in filenames:
+            counted += 1
+            if counted > file_limit:
+                return total, True
+            try:
+                info = os.lstat(os.path.join(root, name))
+            except OSError:
+                continue
+            if stat.S_ISREG(info.st_mode):
+                total += info.st_size
+    return total, False
+
+
 class Broker(object):
     """Handler desacoplado do transporte; auth do kernel em todo pedido."""
 
@@ -137,9 +159,14 @@ class Broker(object):
                             row["frozen"] = observed["frozen"]
                             row["pending_ops"] = observed["overlay_ops"]
                             row["pending_seq"] = observed["pending_seq"]
+                            size, partial = overlay_usage(row["overlay"])
+                            row["overlay_bytes"] = size
+                            row["overlay_size_partial"] = partial
                         except (OSError, DeepFreezeError) as exc:
                             row["frozen"] = None
                             row["pending_ops"] = {}
+                            row["overlay_bytes"] = None
+                            row["overlay_size_partial"] = False
                             row["runtime_error"] = str(exc)
                         result["targets"].append(row)
                 else:
