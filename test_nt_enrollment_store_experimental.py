@@ -96,6 +96,137 @@ class EnrollmentStorePolicyTests(unittest.TestCase):
             opener.assert_not_called()
 
 
+
+class FirstEnrollmentTests(unittest.TestCase):
+    """No mutation until authorization and protected store ACL are checked."""
+
+    def test_invalid_paths_fail_before_privileged_token_check(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller") as auth:
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                for root, directory in (
+                        (r"\\server\share\root", r"C:\Store"),
+                        (r"C:\Data", r"\\server\share\store"),
+                        (r"C:\Data\..\Other", r"C:\Store")):
+                    with self.subTest(root=root, directory=directory):
+                        with self.assertRaises(ValueError):
+                            store.enroll_root_once_experimental(root, directory)
+                auth.assert_not_called()
+                opener.assert_not_called()
+
+    def test_unprivileged_token_cannot_open_store_or_root(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller",
+                               side_effect=PermissionError("UAC")) as auth:
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                with self.assertRaises(PermissionError):
+                    store.enroll_root_once_experimental(
+                        r"C:\Data", r"C:\Store")
+                auth.assert_called_once_with()
+                opener.assert_not_called()
+
+    def test_unprotected_store_cannot_observe_root_or_create_record(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller"):
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                with mock.patch.object(store, "_assert_protected_acl",
+                                       side_effect=PermissionError("ACL")):
+                    with mock.patch.object(store, "create_relative_file") as create:
+                        opener.return_value.__enter__.return_value = 123
+                        with self.assertRaises(PermissionError):
+                            store.enroll_root_once_experimental(
+                                r"C:\Data", r"C:\Store")
+                        opener.assert_called_once_with(
+                            r"C:\Store", read_control=True)
+                        create.assert_not_called()
+
+    def test_success_creates_once_from_pinned_handle_and_reads_back(self):
+        from contextlib import ExitStack
+        import nt_enrollment_store_experimental as store
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.object(store, "_require_privileged_enroller"))
+            opener = stack.enter_context(mock.patch.object(store, "open_trusted_root"))
+            guard = stack.enter_context(mock.patch.object(store, "_assert_protected_acl"))
+            get_identity = stack.enter_context(mock.patch.object(
+                store, "directory_identity", return_value=(1, 2, 3)))
+            seal = stack.enter_context(mock.patch.object(
+                store, "seal_root_identity", return_value=b"sealed"))
+            create = stack.enter_context(mock.patch.object(store, "create_relative_file"))
+            reader = stack.enter_context(mock.patch.object(
+                store, "read_relative_file", return_value=b"sealed"))
+            unseal = stack.enter_context(mock.patch.object(
+                store, "unseal_root_identity", return_value=(1, 2, 3)))
+            opener.return_value.__enter__.side_effect = [11, 22]
+            result = store.enroll_root_once_experimental(
+                r"C:\Data\Protected", r"C:\Secure\Enroll")
+            self.assertEqual(result, (1, 2, 3))
+            self.assertEqual(opener.call_args_list, [
+                mock.call(r"C:\Secure\Enroll", read_control=True),
+                mock.call(r"C:\Data\Protected")])
+            guard.assert_called_once_with(11)
+            get_identity.assert_called_once_with(22)
+            seal.assert_called_once_with(r"C:\Data\Protected", (1, 2, 3))
+            name = store.record_name_for_root(r"C:\Data\Protected")
+            create.assert_called_once_with(11, name, b"sealed")
+            reader.assert_called_once_with(
+                11, name, max_bytes=16384, handle_guard=store._assert_protected_acl)
+            unseal.assert_called_once_with(r"C:\Data\Protected", b"sealed")
+
+    def test_existing_record_is_not_replaced_or_read(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller"):
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                with mock.patch.object(store, "_assert_protected_acl"):
+                    with mock.patch.object(store, "directory_identity",
+                                           return_value=(1, 2, 3)):
+                        with mock.patch.object(store, "seal_root_identity",
+                                               return_value=b"sealed"):
+                            with mock.patch.object(store, "create_relative_file",
+                                                   side_effect=FileExistsError("exists")) as create:
+                                with mock.patch.object(store, "read_relative_file") as read:
+                                    opener.return_value.__enter__.side_effect = [11, 22]
+                                    with self.assertRaises(FileExistsError):
+                                        store.enroll_root_once_experimental(
+                                            r"C:\Data", r"C:\Secure\Enroll")
+                                    create.assert_called_once()
+                                    read.assert_not_called()
+
+    def test_wrong_readback_fails_without_reporting_enrollment(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller"):
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                with mock.patch.object(store, "_assert_protected_acl"):
+                    with mock.patch.object(store, "directory_identity",
+                                           return_value=(1, 2, 3)):
+                        with mock.patch.object(store, "seal_root_identity",
+                                               return_value=b"sealed"):
+                            with mock.patch.object(store, "create_relative_file"):
+                                with mock.patch.object(store, "read_relative_file",
+                                                       return_value=b"other"):
+                                    with mock.patch.object(store, "unseal_root_identity",
+                                                           return_value=(1, 2, 4)):
+                                        opener.return_value.__enter__.side_effect = [11, 22]
+                                        with self.assertRaises(OSError):
+                                            store.enroll_root_once_experimental(
+                                                r"C:\Data", r"C:\Secure\Enroll")
+
+    def test_oversized_dpapi_blob_never_creates_record(self):
+        import nt_enrollment_store_experimental as store
+        with mock.patch.object(store, "_require_privileged_enroller"):
+            with mock.patch.object(store, "open_trusted_root") as opener:
+                with mock.patch.object(store, "_assert_protected_acl"):
+                    with mock.patch.object(store, "directory_identity",
+                                           return_value=(1, 2, 3)):
+                        with mock.patch.object(store, "seal_root_identity",
+                                               return_value=b"x" * 16385):
+                            with mock.patch.object(store, "create_relative_file") as create:
+                                opener.return_value.__enter__.side_effect = [11, 22]
+                                with self.assertRaises(ValueError):
+                                    store.enroll_root_once_experimental(
+                                        r"C:\Data", r"C:\Secure\Enroll")
+                                create.assert_not_called()
+
+
 @unittest.skipUnless(os.name == "nt", "requires Windows native NT handles")
 class NtHandleReadTests(unittest.TestCase):
     def test_read_bounded_and_exact(self):
