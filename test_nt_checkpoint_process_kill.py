@@ -49,6 +49,82 @@ class ForensicReportTests(unittest.TestCase):
                             self.assertEqual(report["state"], "absent")
 
 
+class AdminReviewTests(unittest.TestCase):
+    REPORT = {"state": "uncertain", "intent_sha256": "a" * 64,
+              "completed": 0, "total": 2}
+
+    def test_denied_admin_token_cannot_touch_store(self):
+        with mock.patch.object(
+                forensic, "_require_privileged_enroller",
+                side_effect=PermissionError("not elevated")):
+            with mock.patch.object(forensic, "inspect_nt_commit_for_operator") as inspect:
+                with mock.patch.object(forensic, "open_trusted_root") as opener:
+                    with self.assertRaises(PermissionError):
+                        forensic.record_nt_commit_review_experimental(
+                            r"C:\Test\Target", r"C:\Test\Store",
+                            "CASE_2026_63", "f" * 64)
+                    inspect.assert_not_called()
+                    opener.assert_not_called()
+
+    def test_invalid_case_or_evidence_refused_without_admin_lookup(self):
+        with mock.patch.object(forensic, "_require_privileged_enroller") as auth:
+            for ticket, digest in (
+                    ("../escape", "a" * 64),
+                    ("CASE_2026_63", "not-a-digest"),
+                    ("", "a" * 64)):
+                with self.subTest(ticket=ticket, digest=digest):
+                    with self.assertRaises(ValueError):
+                        forensic.record_nt_commit_review_experimental(
+                            r"C:\Test\Target", r"C:\Test\Store",
+                            ticket, digest)
+            auth.assert_not_called()
+
+    def test_review_created_once_and_does_not_unlock_or_delete(self):
+        with mock.patch.object(forensic, "_require_privileged_enroller"):
+            with mock.patch.object(forensic, "inspect_nt_commit_for_operator",
+                                   return_value=self.REPORT):
+                with mock.patch.object(forensic, "open_trusted_root") as opener:
+                    with mock.patch.object(forensic, "_assert_protected_acl"):
+                        with mock.patch.object(forensic, "_inspect_open_store",
+                                               return_value=self.REPORT):
+                            with mock.patch.object(forensic, "_write_verified") as writer:
+                                opener.return_value.__enter__.return_value = 7
+                                result = forensic.record_nt_commit_review_experimental(
+                                    r"C:\Test\Target", r"C:\Test\Store",
+                                    "INCIDENT_63", "f" * 64)
+                                self.assertEqual(
+                                    result["action"], "review-recorded-no-retry-no-unlock")
+                                self.assertEqual(result["observed_state"], "uncertain")
+                                self.assertEqual(writer.call_count, 1)
+                                self.assertTrue(
+                                    writer.call_args[0][1].endswith(".ntcommit.review"))
+                                self.assertIn(b'"case_id":"INCIDENT_63"',
+                                              writer.call_args[0][2])
+                                writer.side_effect = FileExistsError("already reviewed")
+                                with self.assertRaises(FileExistsError):
+                                    forensic.record_nt_commit_review_experimental(
+                                        r"C:\Test\Target", r"C:\Test\Store",
+                                        "INCIDENT_63", "f" * 64)
+                                self.assertEqual(writer.call_count, 2)
+
+    def test_change_during_review_refuses_write(self):
+        with mock.patch.object(forensic, "_require_privileged_enroller"):
+            with mock.patch.object(forensic, "inspect_nt_commit_for_operator",
+                                   return_value=self.REPORT):
+                with mock.patch.object(forensic, "open_trusted_root") as opener:
+                    with mock.patch.object(forensic, "_assert_protected_acl"):
+                        with mock.patch.object(forensic, "_inspect_open_store",
+                                               return_value=dict(
+                                                   self.REPORT, intent_sha256="b" * 64)):
+                            with mock.patch.object(forensic, "_write_verified") as writer:
+                                opener.return_value.__enter__.return_value = 7
+                                with self.assertRaises(OSError):
+                                    forensic.record_nt_commit_review_experimental(
+                                        r"C:\Test\Target", r"C:\Test\Store",
+                                        "INCIDENT_63", "f" * 64)
+                                writer.assert_not_called()
+
+
 @unittest.skipUnless(os.name == "nt", "requires real Windows subprocess and NTFS")
 class WindowsTerminatedWorkerTests(unittest.TestCase):
     WORKER = r"""
