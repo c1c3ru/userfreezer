@@ -12,8 +12,10 @@ Other ACLs are rejected, including unknown ACE types and NULL DACLs.
 """
 import hashlib
 
-from nt_enrollment_experimental import _canonical_root, unseal_root_identity
-from win32_relative_directory import open_trusted_root, read_relative_file
+from nt_enrollment_experimental import (_canonical_root, seal_root_identity,
+                                        unseal_root_identity)
+from win32_relative_directory import (open_trusted_root, read_relative_file,
+                                      directory_identity, create_relative_file)
 
 _SYSTEM = "S-1-5-18"
 _ADMINS = "S-1-5-32-544"
@@ -65,6 +67,72 @@ def _assert_protected_acl(handle):
             raise PermissionError("ACE invalida no enrollment")
         entries.append((ace[0][0], security.ConvertSidToStringSid(ace[2])))
     _validate_acl_entries(security.ConvertSidToStringSid(owner), entries)
+
+
+def _require_privileged_enroller():
+    """Authorize against effective Windows token, including impersonation.
+
+    A filtered UAC token or unprivileged impersonated named-pipe caller must
+    not enroll a root, even if the service process itself runs as SYSTEM.
+    """
+    import os
+    if os.name != "nt":
+        raise PermissionError("enrollment administrativo exige Windows")
+    import pywintypes
+    import win32api
+    import win32con
+    import win32security as sec
+    try:
+        token = sec.OpenThreadToken(
+            win32api.GetCurrentThread(), win32con.TOKEN_QUERY, True)
+    except pywintypes.error as exc:
+        if exc.winerror != 1008:  # ERROR_NO_TOKEN, not an auth failure
+            raise
+        token = sec.OpenProcessToken(
+            win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
+    try:
+        user_sid = sec.GetTokenInformation(token, sec.TokenUser)[0]
+        if sec.ConvertSidToStringSid(user_sid) == _SYSTEM:
+            return
+        admin_sid = sec.CreateWellKnownSid(
+            sec.WinBuiltinAdministratorsSid, None)
+        if not sec.CheckTokenMembership(token, admin_sid):
+            raise PermissionError("token elevado de administrador exigido")
+    finally:
+        token.Close()
+
+
+def enroll_root_once_experimental(root, store_directory):
+    """Create a first enrollment without ever replacing an existing record.
+
+    The store directory must already exist and pass the strict handle ACL
+    policy. The caller must execute under the same privileged Windows account
+    that will later unseal the DPAPI blob; this does NOT provision the store.
+    No automatic rollback: on failed verification, the newly created file
+    might require an operator to inspect it. Never called by service or CLI.
+    """
+    _canonical_root(root)
+    _canonical_root(store_directory)
+    name = record_name_for_root(root)
+    _require_privileged_enroller()
+    with open_trusted_root(store_directory, read_control=True) as store:
+        _assert_protected_acl(store)
+        with open_trusted_root(root) as pinned:
+            enrolled = directory_identity(pinned)
+            sealed = seal_root_identity(root, enrolled)
+        if not isinstance(sealed, bytes) or not 1 <= len(sealed) <= 16384:
+            raise ValueError("blob DPAPI de cadastro invalido")
+        # FILE_CREATE is an atomic create-only operation. Existing or stale
+        # records must NEVER be replaced by an implicit re-enrollment.
+        create_relative_file(store, name, sealed)
+        # Reopen the new record by a pinned parent, verify its inherited ACL
+        # and read back the DPAPI identity before declaring enrollment valid.
+        observed_blob = read_relative_file(
+            store, name, max_bytes=16384,
+            handle_guard=_assert_protected_acl)
+        if unseal_root_identity(root, observed_blob) != enrolled:
+            raise OSError("identidade do enrollment gravado diverge")
+        return enrolled
 
 
 def load_identity_from_store(root, store_directory):
