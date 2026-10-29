@@ -120,3 +120,27 @@ def apply_pinned_overlay_plan_experimental(
         plan = prepare_native_plan(
             entries, loader, max_payload=max_payload, max_total=max_total)
         return apply_stored_plan_experimental(root, plan, store_directory)
+
+
+
+def apply_reconciled_plan_experimental(
+        root, overlay_root, store_directory,
+        core_ops, core_payload_ids, core_seq,
+        max_payload=MAX_PAYLOAD, max_total=MAX_TOTAL_PAYLOAD):
+    """Pinned journal + pinned payload + enrolled target, all experimental.
+
+    The in-memory plan is never authoritative on its own. Journal and
+    manifest are reread by a handle and compared to core state before
+    preparing any native operations. Not wired into DeepFreezer.thaw().
+    """
+    from nt_overlay_journal_experimental import (
+        prepare_verified_journal_entries_experimental,
+    )
+    from nt_enrollment_store_experimental import load_identity_from_store
+    entries = prepare_verified_journal_entries_experimental(
+        root, overlay_root, store_directory,
+        core_ops, core_payload_ids, core_seq)
+    overlay_id = load_identity_from_store(overlay_root, store_directory)
+    return apply_pinned_overlay_plan_experimental(
+        root, entries, store_directory, overlay_root, overlay_id,
+        max_payload=max_payload, max_total=max_total)
