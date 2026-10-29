@@ -297,7 +297,7 @@ def read_relative_file(parent, name, max_bytes=16384, handle_guard=None):
             read = wintypes.DWORD()
             if not kernel.ReadFile(handle, buffer, len(buffer),
                                    ctypes.byref(read), None):
-                error = ctypes.get_last_error()
+                error = kernel.GetLastError()
                 if error == 38:  # ERROR_HANDLE_EOF
                     break
                 raise ctypes.WinError(error)
