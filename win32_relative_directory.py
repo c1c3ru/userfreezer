@@ -162,23 +162,42 @@ def _check_directory(kernel, handle):
 
 @contextlib.contextmanager
 def open_trusted_root(root):
-    """Abre root absoluto. A identidade/ancestres devem ser confiaveis."""
+    """Pin a drive root, then traverse each component by NT handles.
+
+    Deliberately refuses UNC, device namespace and drive-relative paths.
+    Drive-letter namespace integrity and ACL policy remain out of scope
+    for this experimental backend; production commit stays disabled.
+    """
+    import ntpath
+    if not isinstance(root, str) or not root:
+        raise ValueError("raiz NT invalida")
+    drive, tail = ntpath.splitdrive(root)
+    if (len(drive) != 2 or drive[1] != ":" or
+            not drive[0].isascii() or not drive[0].isalpha() or
+            not tail.startswith(("\\", "/")) or
+            root.startswith(("\\\\", "//")) or
+            "/" in root or ntpath.normpath(root) != root):
+        raise ValueError("somente raiz absoluta canonica de volume local")
+    parts = [part for part in tail.split("\\") if part]
+    for part in parts:
+        _validate_component(part)
     kernel, _ = _dlls()
-    if not os.path.isabs(root):
-        raise ValueError("raiz precisa ser absoluta")
-    handle = kernel.CreateFileW(
-        root, FILE_TRAVERSE | FILE_LIST_DIRECTORY | FILE_ADD_FILE |
-        FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        None, OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
-    if handle == INVALID_HANDLE_VALUE:
-        raise ctypes.WinError()
-    try:
+    with contextlib.ExitStack() as stack:
+        volume = drive.upper() + "\\"
+        handle = kernel.CreateFileW(
+            volume, FILE_TRAVERSE | FILE_LIST_DIRECTORY |
+            FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            None, OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
+        if handle == INVALID_HANDLE_VALUE:
+            raise ctypes.WinError()
+        stack.callback(kernel.CloseHandle, handle)
         _check_directory(kernel, handle)
-        yield handle
-    finally:
-        kernel.CloseHandle(handle)
+        parent = handle
+        for part in parts:
+            parent = stack.enter_context(open_relative_directory(parent, part))
+        yield parent
 
 
 @contextlib.contextmanager

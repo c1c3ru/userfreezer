@@ -112,6 +112,34 @@ class PlanPreflightRegressionTests(unittest.TestCase):
         self.assertEqual(_validate_plan([("W", "relatorio-é.txt", b"ok")])[0][1],
                          "relatorio-é.txt")
 
+    @unittest.skipUnless(os.name == "nt", "requires native Windows handles")
+    def test_root_rejects_reparse_ancestor(self):
+        from win32_relative_directory import open_trusted_root
+        with tempfile.TemporaryDirectory() as temp:
+            outside = os.path.join(temp, "outside")
+            os.mkdir(outside)
+            os.mkdir(os.path.join(outside, "nested"))
+            link = os.path.join(temp, "alias")
+            result = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", link, outside],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            try:
+                with self.assertRaises(OSError):
+                    with open_trusted_root(os.path.join(link, "nested")):
+                        pass
+            finally:
+                os.rmdir(link)
+
+    def test_root_rejects_unc_and_device_namespaces_without_opening(self):
+        from win32_relative_directory import open_trusted_root
+        for root in ("relative/path", r"\\\\server\\share\\folder",
+                     r"\\\\?\\C:\\folder", "C:relative", "C:/mixed",
+                     "C:\\\\doubled"):
+            with self.subTest(root=root), self.assertRaises(ValueError):
+                with open_trusted_root(root):
+                    pass
+
     def test_rejects_oversized_plan(self):
         with self.assertRaises(ValueError):
             _validate_plan([("M", "safe", None)] * 10001)
