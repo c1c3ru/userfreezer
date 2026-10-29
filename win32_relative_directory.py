@@ -135,10 +135,17 @@ def _dlls():
 
 
 def _validate_component(name):
+    """Reject ambiguous Win32/NT names before any handle-relative operation."""
     if (not isinstance(name, str) or not name or name in (".", "..")
-            or any(c in name for c in "/\\:\x00")
+            or any(ord(c) < 32 or c in '/\\:<>"|?*' for c in name)
             or name[-1] in (".", " ")):
         raise ValueError("componente relativo de diretorio inseguro")
+    # Device aliases remain reserved even with an extension (e.g. CON.txt).
+    device = name.split(".", 1)[0].upper()
+    if (device in ("CON", "PRN", "AUX", "NUL")
+            or device in ("COM%d" % n for n in range(1, 10))
+            or device in ("LPT%d" % n for n in range(1, 10))):
+        raise ValueError("nome de dispositivo Windows reservado")
     return name
 
 
