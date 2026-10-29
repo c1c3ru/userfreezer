@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""EXPERIMENTAL: read-only NT enrollment store with strict handle ACL checks.
+"""EXPERIMENTAL: create-once/read NT enrollment with strict handle ACL checks.
 
-This is NOT an enrollment writer or production commit path. Provisioning of
-the store directory and files, privileged authorization, anti-replay and
-Windows 7 SP1 VM evidence are still required to close issue #63.
+The experimental first-enrollment operation creates only a new record in a
+PRE-PROVISIONED protected store (no overwrite), requiring an effective elevated
+administrator or SYSTEM token. No directory provisioning, privileged IPC,
+anti-replay, rollback, or Windows 7 SP1 VM evidence is provided.
 
 The directory and file handles are opened without following reparse points.
 Only owner SYSTEM/Administrators and allow ACEs for those two SIDs pass.
 Other ACLs are rejected, including unknown ACE types and NULL DACLs.
+No service, CLI or production commit path imports this enrollment API.
 """
 import hashlib
 
