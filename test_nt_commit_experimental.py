@@ -118,6 +118,7 @@ class PlanPreflightRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             outside = os.path.join(temp, "outside")
             os.mkdir(outside)
+            os.mkdir(os.path.join(outside, "nested"))
             link = os.path.join(temp, "alias")
             result = subprocess.run(
                 ["cmd", "/c", "mklink", "/J", link, outside],
