@@ -99,6 +99,19 @@ class ExperimentalPlanTests(unittest.TestCase):
 class PlanPreflightRegressionTests(unittest.TestCase):
     """Invalid plans must be rejected before any native operation begins."""
 
+    def test_rejects_reserved_devices_and_win32_metacharacters(self):
+        for name in ("CON", "con.txt", "PRN.log", "AUX", "NUL",
+                     "COM1", "com9.bin", "LPT1", "lpt9.log",
+                     "bad?name", "bad*name", "bad<name",
+                     "bad>name", 'bad"name', "bad|name",
+                     "tab\\tname", "line\\nname"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                _validate_plan([("W", name, b"payload")])
+
+    def test_accepts_ordinary_unicode_component(self):
+        self.assertEqual(_validate_plan([("W", "relatorio-é.txt", b"ok")])[0][1],
+                         "relatorio-é.txt")
+
     def test_rejects_oversized_plan(self):
         with self.assertRaises(ValueError):
             _validate_plan([("M", "safe", None)] * 10001)
