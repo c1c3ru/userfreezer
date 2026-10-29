@@ -209,7 +209,7 @@ class PlanPreflightRegressionTests(unittest.TestCase):
                 apply_plan_experimental(
                     original, [("W", "sentinel.txt", b"unexpected")],
                     expected_root_identity=enrolled)
-            with open(external_sentinel.replace("replacement", "protected"), "rb") as stream:
+            with open(os.path.join(original, "sentinel.txt"), "rb") as stream:
                 self.assertEqual(stream.read(), b"external-preserved")
             self.assertFalse(os.path.lexists(os.path.join(moved, "sentinel.txt")))
 
