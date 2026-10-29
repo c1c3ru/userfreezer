@@ -34,6 +34,9 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    a anotação administrativa imutável e o probe de reboot em VM estão no
    escopo de validação da #63. NÃO há rollback, retomada automática, liberação
    após REVIEW nem durabilidade pós-reboot Windows 7 SP1 comprovada.
+   A auditoria por handle NT acrescenta observações limitadas de tamanho e
+   hash de arquivos W (sem seguir reparse), correlacionadas a STARTED/DONE;
+   isso NUNCA declara um commit recuperado ou retomável.
    O caminho de mutação oficial permanece fail-closed até haver resolução
    administrativa segura de transações parciais e provas em VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma
