@@ -23,12 +23,20 @@ nem habilitar thaw --commit no Windows.
 
 ## O que ainda não foi implementado
 
-- **Provisionamento autorizado:** nenhuma função cria o registro ou prepara
-  o diretório com ACLs adequadas. A segurança depende de diretório e arquivo
-  preexistentes e geridos pelo administrador/conta de serviço.
-- **Armazenamento/regravação atômicos e antirreplay:** um administrador ou
-  processo com privilégios equivalentes pode substituir um registro antigo;
-  DPAPI autentica o envelope, mas **não** fornece contador monotônico.
+- **Provisionamento da pasta e configuração administrativa:** a função
+  experimental `enroll_root_once_experimental` exige um diretório de cadastro
+  **já preparado**, com owner/DACL protegidos e ACEs herdáveis adequadas.
+  Exige token efetivo SYSTEM ou administrador elevado e cria exclusivamente
+  um arquivo novo via `FILE_CREATE` NT; não aceita sobrescrita. O arquivo é
+  reaberto por handle, ACL conferida, DPAPI desselado e identidade comparada.
+  Ainda NÃO há preparação da pasta, comando de instalação, integração de IPC,
+  política de revisão ou autorização da seleção de alvos pelo serviço.
+- **Atualização, rollback e antirreplay:** o primeiro cadastro não substitui
+  registros existentes, mas um administrador ou processo com privilégios
+  equivalentes ainda pode remover/substituir o arquivo. A criação não é uma
+  transação: uma falha na confirmação pode deixar um registro que requer
+  inspeção manual. DPAPI autentica o envelope, mas NÃO fornece contador
+  monotônico, proteção contra replay ou recuperação de falhas de energia.
 - **Resiliência a todos os ataques de namespace/ACL:** o drive letter,
   ancestrais, política de owner e os detalhes das permissões ainda requerem
   auditoria; validar apenas a DACL estática não prova impossibilidade de todas
@@ -44,7 +52,7 @@ nem habilitar thaw --commit no Windows.
 ## Evidências esperadas no próximo ciclo
 
 Executar em VMs descartáveis com snapshot, sob a **mesma conta do serviço**,
-testes de provisionamento/consulta e negativas para owner/DACL inseguros,
+testes de cadastro inicial/consulta, erro após criação e negativas para owner/DACL inseguros,
 junctions em ancestrais/arquivo, token de usuário comum, corrupção/replay,
 substituição concorrente e leitura de arquivo acima do limite.
 
