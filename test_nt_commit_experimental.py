@@ -96,5 +96,37 @@ class ExperimentalPlanTests(unittest.TestCase):
             _validate_plan([("F", "x.txt", b"garbage")])
 
 
+class PlanPreflightRegressionTests(unittest.TestCase):
+    """Invalid plans must be rejected before any native operation begins."""
+
+    def test_rejects_oversized_plan(self):
+        with self.assertRaises(ValueError):
+            _validate_plan([("M", "safe", None)] * 10001)
+
+    def test_rejects_bad_trailing_entry(self):
+        with self.assertRaises(ValueError):
+            _validate_plan([
+                ("W", "first.txt", b"payload"),
+                ("M", "nested", None),
+                ("F", "../outside.txt", None),
+            ])
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows native backend")
+    def test_bad_trailing_entry_cannot_mutate_existing_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            sentinel = os.path.join(root, "sentinel.txt")
+            with open(sentinel, "wb") as handle:
+                handle.write(b"unchanged")
+            with self.assertRaises(ValueError):
+                apply_plan_experimental(root, [
+                    ("W", "sentinel.txt", b"should-not-be-written"),
+                    ("M", "new-directory", None),
+                    ("F", "../escape.txt", None),
+                ])
+            with open(sentinel, "rb") as handle:
+                self.assertEqual(handle.read(), b"unchanged")
+            self.assertFalse(os.path.lexists(os.path.join(root, "new-directory")))
+
+
 if __name__ == "__main__":
     unittest.main()
