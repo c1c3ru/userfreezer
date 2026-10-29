@@ -28,10 +28,13 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    leitura protegida dos payloads e a reconciliação por handles. O método
    `DeepFreezer.preview_windows_native_commit()` passa a permitir validar
    essas garantias a partir do core real, mas é estritamente somente leitura.
-   O caminho de mutação oficial permanece fail-closed até recuperar com
-   segurança falhas parciais e provar o fluxo completo na VM Win7. Ainda faltam
+   O registro durável experimental de INTENT/STARTED/DONE/COMPLETE registra
+   progresso e bloqueia reaplicações automáticas; não fornece rollback,
+   recuperação automática nem durabilidade de reboot comprovada.
+   O caminho de mutação oficial permanece fail-closed até haver resolução
+   administrativa segura de transações parciais e provas em VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma
-   confiável a identidade do overlay, recuperação de falha parcial, auditoria
+   confiável a identidade do overlay, retomada administrativa segura de falha parcial, auditoria
    NTFS/ACL/UNC e Win7 SP1
    em VM real. O `thaw --commit` Windows permanece bloqueado por segurança.
 2. **#49 — ativação real no boot:** VM Linux com unit opt-in protegendo

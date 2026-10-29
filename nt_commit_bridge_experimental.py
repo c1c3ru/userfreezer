@@ -144,3 +144,33 @@ def apply_reconciled_plan_experimental(
     return apply_pinned_overlay_plan_experimental(
         root, entries, store_directory, overlay_root, overlay_id,
         max_payload=max_payload, max_total=max_total)
+
+
+
+def apply_reconciled_checkpointed_plan_experimental(
+        root, overlay_root, store_directory, core_ops, core_payload_ids,
+        core_seq, max_payload=MAX_PAYLOAD, max_total=MAX_TOTAL_PAYLOAD):
+    """Preflight pinned journal/payloads; then durable NT progress markers.
+
+    This function never touches production DeepFreezer.thaw(). All source
+    bytes are gathered and validated BEFORE the first intent marker or
+    target mutation is created. A preexisting marker prevents automatic
+    execution/retry. No crash rollback is claimed.
+    """
+    from nt_overlay_journal_experimental import (
+        prepare_verified_journal_entries_experimental,
+    )
+    from nt_enrollment_store_experimental import load_identity_from_store
+    from nt_overlay_payload_experimental import pinned_overlay_payload_loader
+    from nt_commit_checkpoint_experimental import (
+        apply_checkpointed_plan_experimental,
+    )
+    entries = prepare_verified_journal_entries_experimental(
+        root, overlay_root, store_directory,
+        core_ops, core_payload_ids, core_seq)
+    overlay_id = load_identity_from_store(overlay_root, store_directory)
+    with pinned_overlay_payload_loader(overlay_root, overlay_id) as loader:
+        plan = prepare_native_plan(
+            entries, loader, max_payload=max_payload, max_total=max_total)
+    return apply_checkpointed_plan_experimental(
+        root, overlay_root, store_directory, plan)
