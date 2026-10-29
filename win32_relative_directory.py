@@ -260,7 +260,7 @@ def read_relative_file(parent, name, max_bytes=16384, handle_guard=None):
     before any bytes are returned. Does not use pathname reads.
     """
     _validate_component(name)
-    if (type(max_bytes) is not int or not 1 <= max_bytes <= 65536):
+    if (type(max_bytes) is not int or not 1 <= max_bytes <= 16 * 1024 * 1024):
         raise ValueError("limite de leitura NT invalido")
     if handle_guard is not None and not callable(handle_guard):
         raise ValueError("guard de handle invalido")
@@ -305,7 +305,7 @@ def read_relative_file(parent, name, max_bytes=16384, handle_guard=None):
                 break
             data.extend(buffer.raw[:read.value])
             if len(data) > max_bytes:
-                raise ValueError("registro NT excede limite")
+                raise ValueError("arquivo NT excede limite")
         return bytes(data)
     finally:
         kernel.CloseHandle(handle)
