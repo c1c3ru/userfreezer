@@ -131,6 +131,19 @@ class CheckpointInspectionTests(unittest.TestCase):
         self.assertEqual(report["state"], "complete")
         self.assertEqual(report["completed"], 3)
 
+    def test_out_of_order_markers_fail_closed(self):
+        record, data = fixture()
+        prefix = checkpoint._ledger_prefix(ROOT)
+        files = {
+            prefix + ".intent": data,
+            prefix + ".00001.started": checkpoint._marker(
+                1, "started", record["digest"]),
+        }
+        with mock.patch.object(checkpoint, "_read_optional",
+                               side_effect=self._reader(files)):
+            with self.assertRaises(ValueError):
+                checkpoint._inspect_open_store(1, ROOT)
+
     def test_forged_done_or_complete_is_rejected(self):
         record, data = fixture()
         prefix = checkpoint._ledger_prefix(ROOT)
