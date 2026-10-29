@@ -12,7 +12,7 @@ import os
 import secrets
 
 from win32_relative_directory import (
-    _validate_component, open_trusted_root, open_relative_directory,
+    _validate_component, open_trusted_root, open_relative_directory, directory_identity,
     create_relative_directory, create_relative_file, rename_relative_file,
     delete_relative_file, remove_relative_tree,
 )
@@ -55,18 +55,30 @@ def _validate_plan(plan):
     return checked
 
 
-def apply_plan_experimental(root, plan, on_root_pinned=None):
+def apply_plan_experimental(root, plan, on_root_pinned=None, expected_root_identity=None):
     """Aplica operacoes de teste com uma raiz previamente confiavel.
 
     W: gravar/replace arquivo; M: mkdir; F: unlink regular; D: rmtree.
     on_root_pinned e injetavel apenas para stress/teste de troca de path.
+    expected_root_identity deve vir de cadastro protegido, nunca de
+    leitura do pathname imediatamente antes deste commit experimental.
     Nao permite input de usuario comum nem autorizacao IPC.
     """
     if os.name != "nt":
         raise OSError("plano NT so pode ser executado no Windows")
+    if expected_root_identity is not None:
+        if (not isinstance(expected_root_identity, tuple) or
+                len(expected_root_identity) != 3 or
+                any(not isinstance(v, int) or isinstance(v, bool) or
+                    not 0 <= v <= 0xffffffff for v in expected_root_identity)):
+            raise ValueError("identidade de raiz invalida")
     checked = _validate_plan(plan)
     completed = []
     with open_trusted_root(root) as trusted:
+        if expected_root_identity is not None:
+            observed = directory_identity(trusted)
+            if observed != expected_root_identity:
+                raise OSError("identidade da raiz NT diverge do cadastro confiavel")
         if on_root_pinned:
             on_root_pinned()
         for kind, rel, parts, payload in checked:

@@ -140,6 +140,53 @@ class PlanPreflightRegressionTests(unittest.TestCase):
                 with open_trusted_root(root):
                     pass
 
+    def test_rejects_invalid_root_identity_before_open(self):
+        from unittest import mock
+        import nt_commit_experimental as module
+        with mock.patch.object(module, "os") as fake_os:
+            fake_os.name = "nt"
+            with mock.patch.object(module, "open_trusted_root") as opener:
+                for value in ((1, 2), [1, 2, 3], (1, True, 3),
+                              (1, 2, -1), (1, 2, 0x100000000)):
+                    with self.subTest(identity=value), self.assertRaises(ValueError):
+                        module.apply_plan_experimental(
+                            "C:\\trusted", [("W", "file.txt", b"x")],
+                            expected_root_identity=value)
+                opener.assert_not_called()
+
+    def test_wrong_pinned_identity_refuses_plan_without_mutations(self):
+        from unittest import mock
+        import nt_commit_experimental as module
+        with mock.patch.object(module, "os") as fake_os:
+            fake_os.name = "nt"
+            with mock.patch.object(module, "open_trusted_root") as opener:
+                with mock.patch.object(module, "directory_identity",
+                                       return_value=(10, 11, 12)):
+                    with mock.patch.object(module, "create_relative_file") as writer:
+                        opener.return_value.__enter__.return_value = object()
+                        with self.assertRaises(OSError):
+                            module.apply_plan_experimental(
+                                "C:\\trusted", [("W", "file.txt", b"x")],
+                                expected_root_identity=(10, 11, 13))
+                        writer.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "requires native Windows handles")
+    def test_wrong_real_root_identity_preserves_existing_file(self):
+        from win32_relative_directory import open_trusted_root, directory_identity
+        with tempfile.TemporaryDirectory() as root:
+            sentinel = os.path.join(root, "sentinel.txt")
+            with open(sentinel, "wb") as stream:
+                stream.write(b"original")
+            with open_trusted_root(root) as handle:
+                actual = directory_identity(handle)
+            wrong = (actual[0], actual[1], actual[2] ^ 1)
+            with self.assertRaises(OSError):
+                apply_plan_experimental(
+                    root, [("W", "sentinel.txt", b"changed")],
+                    expected_root_identity=wrong)
+            with open(sentinel, "rb") as stream:
+                self.assertEqual(stream.read(), b"original")
+
     def test_rejects_oversized_plan(self):
         with self.assertRaises(ValueError):
             _validate_plan([("M", "safe", None)] * 10001)
