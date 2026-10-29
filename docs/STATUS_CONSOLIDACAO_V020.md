@@ -24,10 +24,12 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
 1. **#63 — fechar funcionalmente o backend:** os protótipos de operações
    relativas, DPAPI, leitura/criação exclusiva de registros e testes de
-   troca de raízes já possuem CI. Os PRs #124 e #125 adicionaram preflight do journal e leitura protegida
-   de payloads. A reconciliação independente do manifesto/journal por handles
-   NT permite comparar o plano do core com dados de um overlay de identidade
-   cadastrada, mas ainda NÃO integra o commit oficial. Ainda faltam
+   troca de raízes já possuem CI. Os PRs #124 a #126 integram a ponte de preflight do journal, a
+   leitura protegida dos payloads e a reconciliação por handles. O método
+   `DeepFreezer.preview_windows_native_commit()` passa a permitir validar
+   essas garantias a partir do core real, mas é estritamente somente leitura.
+   O caminho de mutação oficial permanece fail-closed até recuperar com
+   segurança falhas parciais e provar o fluxo completo na VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma
    confiável a identidade do overlay, recuperação de falha parcial, auditoria
    NTFS/ACL/UNC e Win7 SP1

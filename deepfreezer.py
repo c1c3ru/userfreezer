@@ -510,6 +510,46 @@ class DeepFreezer(object):
             if kind != "D":
                 raise
 
+    def preview_windows_native_commit(self, store_directory):
+        """Read-only NT commit preflight from this actual frozen core instance.
+
+        Requires both target and overlay enrolled in the protected DPAPI
+        store. Manifest, journal and payload bytes are reread via pinned NT
+        handles with ACL checks. No target writes, journal cleanup, thaw, or
+        automatic commit enablement is performed.
+        """
+        if os.name != "nt":
+            raise DeepFreezeError("inspecao nativa exige Windows")
+        self._require_frozen()
+        from nt_enrollment_store_experimental import load_identity_from_store
+        from nt_overlay_journal_experimental import (
+            prepare_verified_journal_entries_experimental,
+        )
+        from nt_overlay_payload_experimental import pinned_overlay_payload_loader
+        from nt_commit_bridge_experimental import prepare_native_plan
+        from win32_relative_directory import open_trusted_root, directory_identity
+
+        expected_target = load_identity_from_store(
+            self.target, store_directory)
+        with open_trusted_root(self.target) as pinned:
+            if directory_identity(pinned) != expected_target:
+                raise DeepFreezeError("raiz do alvo NT nao corresponde ao cadastro")
+        expected_overlay = load_identity_from_store(
+            self.overlay, store_directory)
+        entries = prepare_verified_journal_entries_experimental(
+            self.target, self.overlay, store_directory,
+            self.ops, self._write_payloads, self._seq)
+        with pinned_overlay_payload_loader(
+                self.overlay, expected_overlay) as loader:
+            prepared = prepare_native_plan(entries, loader)
+        return [
+            {"operation": kind, "path": rel,
+             "bytes": len(payload) if payload is not None else 0,
+             "sha256": hashlib.sha256(payload).hexdigest()
+             if payload is not None else None}
+            for kind, rel, payload in prepared
+        ]
+
     def _apply_commit(self):
         # Seguranca fail-closed: o teste concorrente Windows do PR #84
         # provou rename de ancestral mesmo com handles abertos sem
