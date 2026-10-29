@@ -16,6 +16,8 @@ from ctypes import wintypes
 import os
 
 FILE_READ_ATTRIBUTES = 0x80
+FILE_READ_DATA = 0x1
+READ_CONTROL = 0x20000
 FILE_LIST_DIRECTORY = 0x1
 FILE_NAMES_INFORMATION_CLASS = 12
 STATUS_NO_MORE_FILES = 0x80000006
@@ -102,6 +104,10 @@ def _dlls():
     kernel.SetFileInformationByHandle.argtypes = [
         wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
     kernel.SetFileInformationByHandle.restype = wintypes.BOOL
+    kernel.ReadFile.argtypes = [wintypes.HANDLE, wintypes.LPVOID,
+                                wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                                wintypes.LPVOID]
+    kernel.ReadFile.restype = wintypes.BOOL
     kernel.WriteFile.argtypes = [wintypes.HANDLE, wintypes.LPCVOID,
                                  wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
                                  wintypes.LPVOID]
@@ -161,7 +167,7 @@ def _check_directory(kernel, handle):
 
 
 @contextlib.contextmanager
-def open_trusted_root(root):
+def open_trusted_root(root, read_control=False):
     """Pin a drive root, then traverse each component by NT handles.
 
     Deliberately refuses UNC, device namespace and drive-relative paths.
@@ -169,6 +175,8 @@ def open_trusted_root(root):
     for this experimental backend; production commit stays disabled.
     """
     import ntpath
+    if not isinstance(read_control, bool):
+        raise ValueError("read_control invalido")
     if not isinstance(root, str) or not root:
         raise ValueError("raiz NT invalida")
     drive, tail = ntpath.splitdrive(root)
@@ -186,7 +194,8 @@ def open_trusted_root(root):
         volume = drive.upper() + "\\"
         handle = kernel.CreateFileW(
             volume, FILE_TRAVERSE | FILE_LIST_DIRECTORY |
-            FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_READ_ATTRIBUTES | SYNCHRONIZE |
+            (READ_CONTROL if read_control else 0),
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             None, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
@@ -196,14 +205,17 @@ def open_trusted_root(root):
         _check_directory(kernel, handle)
         parent = handle
         for part in parts:
-            parent = stack.enter_context(open_relative_directory(parent, part))
+            parent = stack.enter_context(open_relative_directory(parent, part,
+                                                                     read_control=read_control))
         yield parent
 
 
 @contextlib.contextmanager
-def open_relative_directory(parent, name):
+def open_relative_directory(parent, name, read_control=False):
     """Abre componente no OBJETO de diretorio parent, nao em pathname."""
     _validate_component(name)
+    if not isinstance(read_control, bool):
+        raise ValueError("read_control invalido")
     kernel, nt = _dlls()
     name_buffer = ctypes.create_unicode_buffer(name)
     byte_length = len(name.encode("utf-16-le"))
@@ -217,7 +229,8 @@ def open_relative_directory(parent, name):
     status = nt.NtCreateFile(
         ctypes.byref(handle),
         FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | FILE_ADD_FILE |
-        FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | SYNCHRONIZE,
+        FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | SYNCHRONIZE |
+        (READ_CONTROL if read_control else 0),
         ctypes.byref(attrs), ctypes.byref(io), None, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         FILE_OPEN,
@@ -237,6 +250,65 @@ def open_relative_directory(parent, name):
 def directory_identity(handle):
     kernel, _ = _dlls()
     return _check_directory(kernel, handle)
+
+
+def read_relative_file(parent, name, max_bytes=16384, handle_guard=None):
+    """Read an NT file relative to a pinned parent; never follow reparse.
+
+    Keeps the file HANDLE open and denies write/delete sharing until read ends.
+    handle_guard (if supplied by trusted code) validates the pinned file ACL
+    before any bytes are returned. Does not use pathname reads.
+    """
+    _validate_component(name)
+    if (type(max_bytes) is not int or not 1 <= max_bytes <= 65536):
+        raise ValueError("limite de leitura NT invalido")
+    if handle_guard is not None and not callable(handle_guard):
+        raise ValueError("guard de handle invalido")
+    kernel, nt = _dlls()
+    name_buffer = ctypes.create_unicode_buffer(name)
+    count = len(name.encode("utf-16-le"))
+    uni = _UNICODE_STRING(count, count, ctypes.cast(name_buffer, wintypes.LPWSTR))
+    attrs = _OBJECT_ATTRIBUTES(
+        ctypes.sizeof(_OBJECT_ATTRIBUTES), parent, ctypes.pointer(uni),
+        OBJ_CASE_INSENSITIVE, None, None)
+    io = _IO_STATUS_BLOCK()
+    handle = wintypes.HANDLE()
+    status = nt.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE,
+        ctypes.byref(attrs), ctypes.byref(io), None, 0,
+        FILE_SHARE_READ, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT |
+        FILE_SYNCHRONOUS_IO_NONALERT, None, 0)
+    if status < 0:
+        raise ctypes.WinError(nt.RtlNtStatusToDosError(status))
+    try:
+        info = _BY_HANDLE_FILE_INFORMATION()
+        if not kernel.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            raise ctypes.WinError()
+        if info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
+                                    FILE_ATTRIBUTE_REPARSE_POINT):
+            raise OSError("registro NT nao pode ser diretorio ou reparse")
+        if handle_guard is not None:
+            handle_guard(handle)
+        data = bytearray()
+        while True:
+            buffer = ctypes.create_string_buffer(min(4096, max_bytes + 1 - len(data)))
+            read = wintypes.DWORD()
+            if not kernel.ReadFile(handle, buffer, len(buffer),
+                                   ctypes.byref(read), None):
+                error = ctypes.get_last_error()
+                if error == 38:  # ERROR_HANDLE_EOF
+                    break
+                raise ctypes.WinError(error)
+            if read.value == 0:
+                break
+            data.extend(buffer.raw[:read.value])
+            if len(data) > max_bytes:
+                raise ValueError("registro NT excede limite")
+        return bytes(data)
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def create_relative_file(parent, name, data):
