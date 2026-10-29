@@ -12,6 +12,8 @@ Sem logs e evidências externas, as issues #49/#54 **não podem ser declaradas c
 > de ancestral. O descarte funciona; nao tente reativar o commit
 > com patch local. Registre o resultado esperado como "BLOQUEADO".
 
+**Novo roteiro específico da issue #63:** [encerramento real, evidência pós-reboot e revisão administrativa de checkpoints NT](WIN7_NT_COMMIT_CRASH_RECOVERY.md). O probe exige checkout exato que contém o teste; a release v0.1.13 não inclui este incremento. O fluxo de commit de produção continua bloqueado.
+
 ## 1. Preparação comum (antes de modificar qualquer filtro)
 
 1. Crie VM descartável **com imagem licenciada**, snapshot e mídia de recuperação.

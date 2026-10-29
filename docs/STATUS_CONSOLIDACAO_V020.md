@@ -29,8 +29,11 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    `DeepFreezer.preview_windows_native_commit()` passa a permitir validar
    essas garantias a partir do core real, mas é estritamente somente leitura.
    O registro durável experimental de INTENT/STARTED/DONE/COMPLETE registra
-   progresso e bloqueia reaplicações automáticas; não fornece rollback,
-   recuperação automática nem durabilidade de reboot comprovada.
+   progresso e bloqueia reaplicações automáticas. O teste real com processo
+   Windows encerrado entre mutação e DONE, a inspeção forense somente leitura,
+   a anotação administrativa imutável e o probe de reboot em VM estão no
+   escopo de validação da #63. NÃO há rollback, retomada automática, liberação
+   após REVIEW nem durabilidade pós-reboot Windows 7 SP1 comprovada.
    O caminho de mutação oficial permanece fail-closed até haver resolução
    administrativa segura de transações parciais e provas em VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma
@@ -82,6 +85,7 @@ sem a evidência dessas plataformas ou redução explícita do escopo.
 ## Fontes de referência
 
 - [Roteiro Windows 7 e VM](WIN7_MANUAL_TEST.md)
+- [Crash NT e revisão administrativa Win7](WIN7_NT_COMMIT_CRASH_RECOVERY.md)
 - [Matriz de validação OS-level](OS_LEVEL_VALIDATION.md)
 - [OverlayFS Linux em VM](LINUX_OVERLAYFS_VM.md)
 - [Painel administrativo](../ui/README.md)
