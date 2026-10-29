@@ -98,8 +98,85 @@ class JournalReconciliationTests(unittest.TestCase):
                                           handle_guard=journal._assert_protected_acl)])
 
 
+class ReconciledNativeBridgeTests(unittest.TestCase):
+    def test_refuses_to_apply_if_pinned_journal_disagrees(self):
+        import nt_commit_bridge_experimental as bridge
+        with mock.patch(
+                "nt_overlay_journal_experimental.prepare_verified_journal_entries_experimental",
+                side_effect=ValueError("journal mismatch")):
+            with mock.patch("nt_enrollment_store_experimental.load_identity_from_store") as lookup:
+                with mock.patch.object(
+                        bridge, "apply_pinned_overlay_plan_experimental") as apply:
+                    with self.assertRaises(ValueError):
+                        bridge.apply_reconciled_plan_experimental(
+                            ROOT, r"C:\Overlay", r"C:\Store", OPS, IDS, 1)
+                    lookup.assert_not_called()
+                    apply.assert_not_called()
+
+    def test_reconciled_plan_passes_only_trusted_sources(self):
+        import nt_commit_bridge_experimental as bridge
+        with mock.patch(
+                "nt_overlay_journal_experimental.prepare_verified_journal_entries_experimental",
+                return_value=[(["new.txt"], "W", 0, "payloads/0000000000000001")]):
+            with mock.patch("nt_enrollment_store_experimental.load_identity_from_store",
+                            return_value=(1, 2, 3)):
+                with mock.patch.object(
+                        bridge, "apply_pinned_overlay_plan_experimental",
+                        return_value=["new.txt"]) as apply:
+                    result = bridge.apply_reconciled_plan_experimental(
+                        ROOT, r"C:\Overlay", r"C:\Store", OPS, IDS, 1)
+                    self.assertEqual(result, ["new.txt"])
+                    apply.assert_called_once_with(
+                        ROOT, [(["new.txt"], "W", 0, "payloads/0000000000000001")],
+                        r"C:\Store", r"C:\Overlay", (1, 2, 3),
+                        max_payload=16777216, max_total=67108864)
+
+
 @unittest.skipUnless(os.name == "nt", "requires Windows handles")
 class WindowsPinnedJournalTests(unittest.TestCase):
+    def test_full_reconciled_handle_plan_writes_only_enrolled_target(self):
+        import ntpath
+        import nt_commit_bridge_experimental as bridge
+        import nt_enrollment_store_experimental as store
+        import nt_overlay_payload_experimental as payload
+        with tempfile.TemporaryDirectory() as temp:
+            target = os.path.join(temp, "protected")
+            overlay_path = os.path.join(temp, "overlay")
+            os.mkdir(target)
+            os.mkdir(overlay_path)
+            os.mkdir(os.path.join(overlay_path, "payloads"))
+            with open_trusted_root(target) as handle:
+                target_id = directory_identity(handle)
+            with open_trusted_root(overlay_path) as handle:
+                overlay_id = directory_identity(handle)
+            manifest = json.dumps(
+                {"v": 1, "root": target, "entries": {}}).encode("utf-8")
+            for filename, data in (
+                    ("manifest.json", manifest),
+                    ("journal.log", LINE)):
+                with open(os.path.join(overlay_path, filename), "wb") as out:
+                    out.write(data)
+            with open(os.path.join(overlay_path, "payloads",
+                                   "0000000000000001"), "wb") as out:
+                out.write(b"SAFE-COMMIT")
+            def identity_for(path, _store):
+                return (overlay_id if ntpath.normcase(path) ==
+                        ntpath.normcase(overlay_path) else target_id)
+            with mock.patch.object(
+                    journal, "load_identity_from_store",
+                    side_effect=identity_for):
+                with mock.patch.object(
+                        store, "load_identity_from_store",
+                        side_effect=identity_for):
+                    with mock.patch.object(journal, "_assert_protected_acl"):
+                        with mock.patch.object(payload, "_assert_protected_acl"):
+                            result = bridge.apply_reconciled_plan_experimental(
+                                target, overlay_path, r"C:\Unused",
+                                OPS, IDS, 1)
+            self.assertEqual(result, ["new.txt"])
+            with open(os.path.join(target, "new.txt"), "rb") as inp:
+                self.assertEqual(inp.read(), b"SAFE-COMMIT")
+
     def test_disk_manifest_and_journal_match_pinned_core_state(self):
         with tempfile.TemporaryDirectory() as overlay:
             with open(os.path.join(overlay, "manifest.json"), "wb") as output:
