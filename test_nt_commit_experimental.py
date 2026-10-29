@@ -213,6 +213,27 @@ class PlanPreflightRegressionTests(unittest.TestCase):
                 self.assertEqual(stream.read(), b"external-preserved")
             self.assertFalse(os.path.lexists(os.path.join(moved, "sentinel.txt")))
 
+    def test_strict_entry_refuses_missing_enrollment_without_opening_root(self):
+        from unittest import mock
+        import nt_commit_experimental as module
+        with mock.patch.object(module, "open_trusted_root") as opener:
+            with self.assertRaises(ValueError):
+                module.apply_enrolled_plan_experimental(
+                    "C:\\\\trusted", [("W", "file.txt", b"x")], None)
+            opener.assert_not_called()
+
+    def test_strict_entry_forwards_expected_identity(self):
+        from unittest import mock
+        import nt_commit_experimental as module
+        with mock.patch.object(module, "apply_plan_experimental",
+                               return_value=["file.txt"]) as apply:
+            result = module.apply_enrolled_plan_experimental(
+                "C:\\\\trusted", [("W", "file.txt", b"x")], (1, 2, 3))
+            self.assertEqual(result, ["file.txt"])
+            apply.assert_called_once_with(
+                "C:\\\\trusted", [("W", "file.txt", b"x")],
+                expected_root_identity=(1, 2, 3))
+
     def test_rejects_oversized_plan(self):
         with self.assertRaises(ValueError):
             _validate_plan([("M", "safe", None)] * 10001)
