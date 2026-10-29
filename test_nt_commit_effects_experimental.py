@@ -80,10 +80,14 @@ class NTReadOnlyEffectTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
     def test_bad_metadata_rejected(self):
-        with self.assertRaises(ValueError):
-            effects.inspect_nt_commit_write_effects(ROOT, RID, [
-                {"kind": "W", "path": "safe", "size": True,
-                 "sha256": "0" * 64}])
+        with mock.patch.object(effects, "open_trusted_root") as opener:
+            with mock.patch.object(effects, "directory_identity", return_value=RID):
+                with mock.patch.object(effects, "_assert_protected_acl"):
+                    opener.return_value.__enter__.return_value = 7
+                    with self.assertRaises(ValueError):
+                        effects.inspect_nt_commit_write_effects(ROOT, RID, [
+                            {"kind": "W", "path": "safe", "size": True,
+                             "sha256": "0" * 64}])
 
     def test_forensic_report_rechecks_markers_and_refuses_replay(self):
         report = {
