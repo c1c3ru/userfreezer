@@ -5,6 +5,7 @@
 These are not rollback/transactional-atomicity claims.
 """
 import json
+import ntpath
 import os
 import tempfile
 import unittest
@@ -206,7 +207,8 @@ class WindowsNativeCheckpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as base:
             root, overlay, store, root_id, overlay_id = self.setup_roots(base)
             def load(path, _store):
-                return overlay_id if path == overlay else root_id
+                return (overlay_id if ntpath.normcase(path) == ntpath.normcase(overlay)
+                        else root_id)
             with mock.patch.object(checkpoint, "load_identity_from_store",
                                    side_effect=load):
                 with mock.patch.object(checkpoint, "_assert_protected_acl"):
@@ -230,7 +232,8 @@ class WindowsNativeCheckpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as base:
             root, overlay, store, root_id, overlay_id = self.setup_roots(base)
             def load(path, _store):
-                return overlay_id if path == overlay else root_id
+                return (overlay_id if ntpath.normcase(path) == ntpath.normcase(overlay)
+                        else root_id)
             def simulated_failure(_index, _name):
                 raise SystemExit("injected crash after native write")
             with mock.patch.object(checkpoint, "load_identity_from_store",
@@ -266,7 +269,8 @@ class WindowsNativeCheckpointTests(unittest.TestCase):
                     checkpoint.inspect_nt_commit_checkpoint(root, store)
                 with mock.patch.object(checkpoint, "load_identity_from_store",
                                        side_effect=lambda path, _store:
-                                       overlay_id if path == overlay else root_id):
+                                       overlay_id if ntpath.normcase(path) == ntpath.normcase(overlay)
+                                       else root_id):
                     with self.assertRaises(checkpoint.PendingNTCommitError):
                         checkpoint.apply_checkpointed_plan_experimental(
                             root, overlay, store, [("W", "safe.txt", b"NO")])
