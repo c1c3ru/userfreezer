@@ -111,6 +111,22 @@ class PlanPreflightRegressionTests(unittest.TestCase):
                 ("F", "../outside.txt", None),
             ])
 
+
+    def test_parent_open_permission_error_does_not_attempt_mkdir(self):
+        from unittest import mock
+        import nt_commit_experimental as module
+        denied = PermissionError("access denied")
+        denied.winerror = 5
+        with mock.patch.object(module.os, "name", "nt"), \\
+             mock.patch.object(module, "open_trusted_root") as root, \\
+             mock.patch.object(module, "open_relative_directory", side_effect=denied), \\
+             mock.patch.object(module, "create_relative_directory") as mkdir:
+            root.return_value.__enter__.return_value = object()
+            with self.assertRaises(PartialCommitError) as caught:
+                module.apply_plan_experimental("C:/trusted", [("W", "parent/file.txt", b"x")])
+            self.assertEqual(caught.exception.completed, ())
+            mkdir.assert_not_called()
+
     @unittest.skipUnless(os.name == "nt", "requires Windows native backend")
     def test_bad_trailing_entry_cannot_mutate_existing_root(self):
         with tempfile.TemporaryDirectory() as root:
