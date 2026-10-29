@@ -192,12 +192,12 @@ def _inspect_open_store(store_handle, root):
         if done is not None and started is None:
             raise ValueError("DONE sem STARTED")
         if done is not None:
-            if active is not None:
-                raise ValueError("DONE posterior a etapa inconclusa")
+            if active is not None or index != completed:
+                raise ValueError("DONE fora de sequencia")
             completed += 1
         elif started is not None:
-            if active is not None:
-                raise ValueError("multiplas etapas em curso")
+            if active is not None or index != completed:
+                raise ValueError("STARTED fora de sequencia")
             active = index
     complete = _read_optional(store_handle, prefix + ".complete", 2048)
     if complete is not None and complete != _marker(len(intent["steps"]), "complete", digest):
@@ -241,10 +241,15 @@ def apply_checkpointed_plan_experimental(
     if after_operation is not None and not callable(after_operation):
         raise ValueError("callback de teste invalido")
     # Validate complete plan before opening checkpoint files.
-    _describe_plan(plan)
+    # Snapshot immutable bytes and metadata once; callers must not be able
+    # to mutate a list of operations after it has been hashed into INTENT.
+    checked = _validate_plan(plan)
+    frozen_plan = tuple((kind, rel, payload)
+                        for kind, rel, _parts, payload in checked)
+    _describe_plan(frozen_plan)
     root_id = load_identity_from_store(root, store_directory)
     overlay_id = load_identity_from_store(overlay_root, store_directory)
-    record, intent = _intent_record(root, overlay_root, root_id, overlay_id, plan)
+    record, intent = _intent_record(root, overlay_root, root_id, overlay_id, frozen_plan)
     with open_trusted_root(root) as pinned:
         if directory_identity(pinned) != root_id:
             raise OSError("identidade da raiz NT divergente antes do commit")
@@ -266,7 +271,7 @@ def apply_checkpointed_plan_experimental(
                 raise PendingNTCommitError(
                     "registro NT existente; consultar checkpoint, sem auto-retomada") from exc
             raise
-        for index, step in enumerate(plan):
+        for index, step in enumerate(frozen_plan):
             name = record["steps"][index]["path"]
             try:
                 _write_verified(store, prefix + ".%05d.started" % index,
@@ -282,8 +287,8 @@ def apply_checkpointed_plan_experimental(
                 raise UncertainNTCommitError(index, name, exc) from exc
         try:
             _write_verified(store, prefix + ".complete",
-                            _marker(len(plan), "complete", record["digest"]))
+                            _marker(len(frozen_plan), "complete", record["digest"]))
         except BaseException as exc:
             raise UncertainNTCommitError(len(plan), "(complete)", exc) from exc
-    return {"state": "complete", "completed": len(plan),
-            "total": len(plan), "intent_sha256": record["digest"]}
+    return {"state": "complete", "completed": len(frozen_plan),
+            "total": len(frozen_plan), "intent_sha256": record["digest"]}
