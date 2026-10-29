@@ -24,10 +24,12 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
 1. **#63 — fechar funcionalmente o backend:** os protótipos de operações
    relativas, DPAPI, leitura/criação exclusiva de registros e testes de
-   troca de raízes já possuem CI. O PR de ponte para o journal adiciona
-   validação antecipada de todo o plano sem ativar o core. Ainda faltam
-   vincular o serviço ao armazenamento NT seguro, autenticar payloads do
-   overlay, recuperação de falha parcial, auditoria NTFS/ACL/UNC e Win7 SP1
+   troca de raízes já possuem CI. O PR #124 adicionou a ponte de preflight do journal; o novo leitor
+   experimental protege payloads por handles relativos, ACL e identidade
+   do overlay previamente cadastrada, sem ativar o core. Ainda faltam
+   vincular o serviço ao armazenamento NT seguro, persistir de forma
+   confiável a identidade do overlay, recuperação de falha parcial, auditoria
+   NTFS/ACL/UNC e Win7 SP1
    em VM real. O `thaw --commit` Windows permanece bloqueado por segurança.
 2. **#49 — ativação real no boot:** VM Linux com unit opt-in protegendo
    apenas diretório permitido e testando gravação por processo externo

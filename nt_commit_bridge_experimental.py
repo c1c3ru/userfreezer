@@ -100,3 +100,23 @@ def apply_prepared_plan_experimental(
         entries, payload_loader, max_payload=max_payload, max_total=max_total)
     from nt_enrollment_store_experimental import apply_stored_plan_experimental
     return apply_stored_plan_experimental(root, plan, store_directory)
+
+
+
+def apply_pinned_overlay_plan_experimental(
+        root, entries, store_directory, overlay_root,
+        expected_overlay_identity,
+        max_payload=MAX_PAYLOAD, max_total=MAX_TOTAL_PAYLOAD):
+    """Use a pinned ACL-checked overlay reader for the native plan.
+
+    Source entries are relative names under payloads/ or files/, NOT
+    absolute pathname strings from the core. Still isolated from production.
+    There is no durable journal progress or rollback after partial failure.
+    """
+    from nt_overlay_payload_experimental import pinned_overlay_payload_loader
+    from nt_enrollment_store_experimental import apply_stored_plan_experimental
+    with pinned_overlay_payload_loader(
+            overlay_root, expected_overlay_identity) as loader:
+        plan = prepare_native_plan(
+            entries, loader, max_payload=max_payload, max_total=max_total)
+        return apply_stored_plan_experimental(root, plan, store_directory)
