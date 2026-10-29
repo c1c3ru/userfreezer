@@ -249,6 +249,31 @@ class NtHandleReadTests(unittest.TestCase):
                         handle_guard=lambda _handle: (_ for _ in ()).throw(
                             PermissionError("ACL refused")))
 
+    def test_native_create_only_and_dpapi_roundtrip_disposable_store(self):
+        """Proves NT create semantics on Windows, NOT the store ACL policy."""
+        import nt_enrollment_store_experimental as store
+        with tempfile.TemporaryDirectory() as base:
+            target = os.path.join(base, "protected")
+            registry = os.path.join(base, "enrollment")
+            os.mkdir(target)
+            os.mkdir(registry)
+            with mock.patch.object(store, "_require_privileged_enroller"):
+                # The disposable test folder is not a production ACL store.
+                # ACL policy itself is covered by independent negative tests.
+                with mock.patch.object(store, "_assert_protected_acl"):
+                    enrolled = store.enroll_root_once_experimental(
+                        target, registry)
+                    self.assertEqual(
+                        store.load_identity_from_store(target, registry), enrolled)
+                    name = store.record_name_for_root(target)
+                    record = os.path.join(registry, name)
+                    with open(record, "rb") as stream:
+                        original = stream.read()
+                    with self.assertRaises(OSError):
+                        store.enroll_root_once_experimental(target, registry)
+                    with open(record, "rb") as stream:
+                        self.assertEqual(stream.read(), original)
+
     def test_file_reparse_point_is_not_read(self):
         with tempfile.TemporaryDirectory() as root:
             origin = os.path.join(root, "origin.txt")
