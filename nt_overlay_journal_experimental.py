@@ -49,7 +49,7 @@ def _parse_pinned_metadata(manifest_raw, journal_raw, expected_root,
         raise ValueError("manifest NT invalido") from exc
     if (not isinstance(manifest, dict) or type(manifest.get("v")) is not int
             or manifest["v"] != 1 or not isinstance(manifest.get("root"), str)
-            or ntpath.normcase(manifest["root"]) != canonical
+            or _canonical_root(manifest["root"]) != canonical
             or not isinstance(manifest.get("entries"), dict)):
         raise ValueError("manifest nao pertence a raiz NT informada")
     if journal_raw and not journal_raw.endswith(b"\n"):
@@ -80,6 +80,8 @@ def _parse_pinned_metadata(manifest_raw, journal_raw, expected_root,
         last_seq = seq
         if not isinstance(rel, str):
             raise ValueError("caminho NT invalido")
+        if kind not in ("W", "M", "D"):
+            raise ValueError("tipo de journal NT nao permitido")
         payload = b"" if kind == "W" else None
         try:
             _validate_plan([(kind, rel, payload)])
