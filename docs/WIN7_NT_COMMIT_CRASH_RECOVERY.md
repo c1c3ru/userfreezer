@@ -86,6 +86,17 @@ scripts do probe de scratch contra uma pasta real.
    A inspeção exige identidade DPAPI do alvo e overlay, confere handles e
    ACLs, valida hash da intenção e STARTED/DONE e retorna sempre
    resume_allowed=false. Se qualquer requisito falhar: preservar, escalar.
+   A seção write_effects do relatório executa leitura somente por handles NT
+   da raiz e diretórios fixados. Cada escrita W recebe uma observação:
+   matches_recorded_hash, differs_from_recorded_hash, missing,
+   unverifiable ou not_verified_budget. Diretórios criados e exclusões
+   permanecem not_verified_for_nonwrite — ausência/presença atual não
+   demonstra que uma operação específica ocorreu. O status de marcador
+   permanece independente: done, started_uncertain ou not_confirmed.
+   **Mesmo matches_recorded_hash não comprova a origem dos bytes,
+   durabilidade pós-reboot nem autoriza reexecução.** A leitura verifica
+   identidade/ACL e recusa seguir junctions; erros de ACL ou reparse
+   são marcados como unverifiable para revisão manual.
 3. **Correlacionar:** comparar estado atual de cada destino com o último
    snapshot confiável e hashes dos dados; tratar STARTED sem DONE como
    ambíguo mesmo que o arquivo pareça presente. Verificar efeitos externos,

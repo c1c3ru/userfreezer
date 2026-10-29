@@ -52,7 +52,26 @@ def inspect_nt_commit_for_operator(root, store_directory):
             raise OSError("identidade fisica do overlay NT divergente")
         _assert_protected_acl(pinned)
 
+    from nt_commit_effects_experimental import inspect_nt_commit_write_effects
+    observations = inspect_nt_commit_write_effects(
+        root, root_id, intent["steps"])
+    # Checkpoint state may change while files are being inspected. A report
+    # must never silently combine two different journal progress snapshots.
+    with open_trusted_root(store_directory, read_control=True) as store:
+        _assert_protected_acl(store)
+        fresh = _inspect_open_store(store, root)
+        if fresh != state:
+            raise OSError("checkpoint mudou durante inspecao dos efeitos")
+
+    for item in observations["steps"]:
+        index = item["index"]
+        item["marker_state"] = (
+            "done" if index < state["completed"] else
+            "started_uncertain" if index == state.get("uncertain_index") else
+            "not_confirmed")
     return {
+        "write_effects": observations,
+        "manual_review_required": True,
         "state": state["state"], "completed": state["completed"],
         "total": state["total"],
         "uncertain_index": state.get("uncertain_index"),
