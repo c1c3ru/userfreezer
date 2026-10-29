@@ -130,3 +130,17 @@ def apply_plan_experimental(root, plan, on_root_pinned=None, expected_root_ident
             except (OSError, ValueError) as exc:
                 raise PartialCommitError(completed, exc) from exc
     return completed
+
+
+def apply_enrolled_plan_experimental(root, plan, expected_root_identity):
+    """Strict experimental entry: never execute without enrolled identity.
+
+    The caller MUST obtain expected_root_identity from a protected
+    administrator-controlled enrollment record. This function does not
+    enroll roots or verify provenance/ACLs of a stored record.
+    It is deliberately not wired into CLI, IPC or production commit.
+    """
+    if expected_root_identity is None:
+        raise ValueError("identidade cadastrada da raiz NT obrigatoria")
+    return apply_plan_experimental(
+        root, plan, expected_root_identity=expected_root_identity)
