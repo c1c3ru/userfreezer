@@ -187,6 +187,32 @@ class PlanPreflightRegressionTests(unittest.TestCase):
             with open(sentinel, "rb") as stream:
                 self.assertEqual(stream.read(), b"original")
 
+    @unittest.skipUnless(os.name == "nt", "requires native Windows handles")
+    def test_root_replaced_before_open_is_rejected_by_expected_identity(self):
+        from win32_relative_directory import open_trusted_root, directory_identity
+        with tempfile.TemporaryDirectory() as temp:
+            original = os.path.join(temp, "protected")
+            moved = os.path.join(temp, "moved")
+            replacement = os.path.join(temp, "replacement")
+            os.mkdir(original)
+            os.mkdir(replacement)
+            with open_trusted_root(original) as handle:
+                enrolled = directory_identity(handle)
+            external_sentinel = os.path.join(replacement, "sentinel.txt")
+            with open(external_sentinel, "wb") as stream:
+                stream.write(b"external-preserved")
+            # Swap before the consumer opens any root handle. No junction is
+            # required: a plain directory replacement must also be detected.
+            os.rename(original, moved)
+            os.rename(replacement, original)
+            with self.assertRaises(OSError):
+                apply_plan_experimental(
+                    original, [("W", "sentinel.txt", b"unexpected")],
+                    expected_root_identity=enrolled)
+            with open(os.path.join(original, "sentinel.txt"), "rb") as stream:
+                self.assertEqual(stream.read(), b"external-preserved")
+            self.assertFalse(os.path.lexists(os.path.join(moved, "sentinel.txt")))
+
     def test_rejects_oversized_plan(self):
         with self.assertRaises(ValueError):
             _validate_plan([("M", "safe", None)] * 10001)
