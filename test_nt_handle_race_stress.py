@@ -120,6 +120,8 @@ for i in range(16):
     os.rename(moved, target)
     sys.stdout.write("restored\n")
     sys.stdout.flush()
+    if not sys.stdin.readline():
+        raise RuntimeError("victim disconnected after restore")
 """
             proc = None
             try:
@@ -149,6 +151,9 @@ for i in range(16):
                     with open(os.path.join(target, name), "rb") as src:
                         self.assertEqual(src.read(), b"TRUSTED")
                     self.assertFalse(os.path.lexists(os.path.join(decoy, name)))
+                    # Keep the legitimate root in place until verified.
+                    proc.stdin.write("\n")
+                    proc.stdin.flush()
                 proc.stdin.close()
                 status = proc.wait(timeout=30)
                 err = proc.stderr.read()
