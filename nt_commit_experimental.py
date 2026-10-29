@@ -77,8 +77,12 @@ def apply_plan_experimental(root, plan, on_root_pinned=None):
                         try:
                             child = stack.enter_context(
                                 open_relative_directory(parent, component))
-                        except OSError:
-                            if kind not in ("W", "M"):
+                        except OSError as exc:
+                            # Somente ausencia comprovada admite mkdir.
+                            # ACL, reparse, sharing violation e outros erros
+                            # devem falhar fechados sem tentar mutacao.
+                            if (kind not in ("W", "M") or
+                                    getattr(exc, "winerror", None) not in (2, 3)):
                                 raise
                             # Se o item existente for reparse, mkdir falha
                             # e nunca seguimos o link no nome.
