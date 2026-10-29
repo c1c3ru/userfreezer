@@ -22,7 +22,7 @@ MAX_SCAN_TOTAL_BYTES = 64 * 1024 * 1024
 _MISSING_ERRORS = (2, 3)
 
 
-def _read_write_effect(pinned_root, rel):
+def _read_write_effect(pinned_root, rel, max_bytes):
     """Return bytes or None for proven absence; raise on any other failure."""
     _validate_plan([("W", rel, b"")])
     components = rel.split("/")
@@ -39,7 +39,7 @@ def _read_write_effect(pinned_root, rel):
             _assert_protected_acl(parent)
         try:
             return read_relative_file(
-                parent, components[-1], max_bytes=MAX_SCAN_FILE_BYTES,
+                parent, components[-1], max_bytes=max_bytes,
                 handle_guard=_assert_protected_acl)
         except OSError as exc:
             if getattr(exc, "winerror", None) in _MISSING_ERRORS:
@@ -82,13 +82,16 @@ def inspect_nt_commit_write_effects(root, expected_root_identity, steps):
             if (type(size) is not int or size < 0 or
                     not isinstance(digest, str) or len(digest) != 64):
                 raise ValueError("metadados de write NT invalidos")
-            if size > MAX_SCAN_FILE_BYTES or total + size > MAX_SCAN_TOTAL_BYTES:
+            if (size > MAX_SCAN_FILE_BYTES or total + size > MAX_SCAN_TOTAL_BYTES
+                    or total >= MAX_SCAN_TOTAL_BYTES):
                 observations.append({
                     "index": index, "kind": kind, "path": rel,
                     "observation": "not_verified_budget"})
                 continue
             try:
-                data = _read_write_effect(pinned, rel)
+                data = _read_write_effect(
+                    pinned, rel,
+                    min(MAX_SCAN_FILE_BYTES, MAX_SCAN_TOTAL_BYTES - total))
                 if data is None:
                     status = "missing"
                 else:
