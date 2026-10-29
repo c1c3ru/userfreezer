@@ -155,7 +155,7 @@ class CheckpointInspectionTests(unittest.TestCase):
                  prefix + ".complete": checkpoint._marker(
                      len(PLAN), "complete", record["digest"])},
                 {prefix + ".intent": data,
-                 prefix + ".00000.started": b"bad"}),
+                 prefix + ".00000.started": b"bad"}):
             with self.subTest(files=files):
                 with mock.patch.object(checkpoint, "_read_optional",
                                        side_effect=self._reader(files)):
