@@ -1,0 +1,3 @@
+# Existing legacy packaging dependencies (Python 3.8 for Win7 compatibility)
+pywin32==306
+pyinstaller==5.13.2

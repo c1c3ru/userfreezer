@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/build-packages.yml"
       - "packaging/**"
+      - ".github/ci/requirements-win-*.txt"
       - "admin_ipc*.py"
       - "os_level_status.py"
       - "admin_client.py"
@@ -49,9 +50,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: ${{ runner.os == 'Windows' && 'pip' || '' }}
+          cache-dependency-path: .github/ci/requirements-win-tests.txt
       - name: Install pywin32 for Windows DPAPI and native security tests
         if: runner.os == 'Windows'
-        run: python -m pip install pywin32==310
+        run: python -m pip install -r .github/ci/requirements-win-tests.txt
       - name: Verify syntax
         run: python -m compileall -q .
       - name: Run tests
@@ -136,9 +139,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: .github/ci/requirements-win-package.txt
 
       - name: Install build dependencies
-        run: python -m pip install "pywin32==310" "pyinstaller==6.16.0"
+        run: python -m pip install -r .github/ci/requirements-win-package.txt
 
       - name: Build deepfreezer_service_windows-10-11.exe
         run: >
@@ -183,9 +188,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.8"
+          cache: pip
+          cache-dependency-path: .github/ci/requirements-win7-package.txt
 
       - name: Install build dependencies
-        run: python -m pip install "pywin32==306" "pyinstaller==5.13.2"
+        run: python -m pip install -r .github/ci/requirements-win7-package.txt
 
       - name: Build deepfreezer_service_windows-7-8.exe (Python 3.8, compativel com Windows 7)
         run: >
