@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "version": "0.2.0",
+  "issues": {
+    "63": {"state": "pending", "evidence": []},
+    "49": {"state": "pending", "evidence": []},
+    "54": {"state": "pending", "evidence": []},
+    "56": {"state": "pending", "evidence": []}
+  },
+  "review": {
+    "approved": false,
+    "reviewer": null,
+    "approval_url": null
+  }
+}
