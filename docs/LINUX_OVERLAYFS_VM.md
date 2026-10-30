@@ -128,3 +128,45 @@ A unidade `deepfreezer-overlayfs@.service` é distribuída no pacote
 `SHA256SUMS` da release v0.1.13 antes de instalar na VM). O pacote
 não habilita a unit. Um boot real com escrita externa e reversão do
 estado ainda deve ser demonstrado conforme as issues #49 e #54.
+
+
+## Ensaio em duas fases após reboot verdadeiro (#49)
+
+O novo script `packaging/linux/overlayfs_vm_reboot_probe.py` registra a
+identidade do boot em /proc/sys/kernel/random/boot_id e exige que ela mude
+entre as fases. Este teste é somente para proteção por DIRETÓRIO: o script
+não monta, reinicia, habilita serviços nem modifica partições/BCD.
+
+Preparação: usar VM Linux descartável com snapshot e segundo disco
+persistente montado em /mnt/df-evidence (não tmpfs ou OverlayFS). Criar
+baseline.txt na árvore inferior de /srv/deepfreezer-vm-test ANTES de
+ativar o OverlayFS. Habilitar a unidade systemd opt-in, reiniciar e
+comprovar a montagem overlay verdadeira antes de executar o probe.
+
+Com o OverlayFS ativo no mountpoint exato, na raiz do checkout:
+
+    sudo python3 packaging/linux/overlayfs_vm_reboot_probe.py --prepare --target /srv/deepfreezer-vm-test --evidence /mnt/df-evidence/overlayfs-before.json --confirm-disposable-vm
+
+O script grava uma sentinela via filesystem comum, fora da API do
+UserFreezer, e persiste o ID do boot e hashes do baseline e da sentinela.
+O arquivo de evidência NÃO pode existir antes da preparação.
+
+Reiniciar a VM MANUALMENTE, sem restaurar o snapshot entre as fases:
+
+    sudo reboot
+
+Após novo boot com a montagem overlay recriada:
+
+    sudo python3 packaging/linux/overlayfs_vm_reboot_probe.py --verify-after-reboot --target /srv/deepfreezer-vm-test --evidence /mnt/df-evidence/overlayfs-before.json --confirm-disposable-vm
+
+A observação de rollback exige novo boot_id, mountpoint OverlayFS real,
+baseline íntegro e ausência da escrita externa. A ferramenta recusa
+unmount sem reboot e evidências fora de disco persistente separado.
+
+**Limitações:** não atesta autenticidade da VM/hipervisor, ativação antes
+dos primeiros escritores do boot, rootfs inteiro, queda de energia
+ou exclusões persistentes. Guarde logs do hypervisor, boot e snapshot,
+além dos dados JSON, em mídia externa. A execução em VM real ainda está
+PENDENTE. Testes CI validam apenas a rejeição de evidências falsas.
+
+Teste portátil: python -m unittest -v test_linux_overlayfs_vm_reboot_probe

@@ -58,7 +58,10 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    confiável a identidade do overlay, retomada administrativa segura de falha parcial, auditoria
    NTFS/ACL/UNC e Win7 SP1
    em VM real. O `thaw --commit` Windows permanece bloqueado por segurança.
-2. **#49 — ativação real no boot:** VM Linux com unit opt-in protegendo
+2. **#49 — ativação real no boot:** o novo probe Linux em duas fases
+   registra boot_id, estado OverlayFS e hashes do baseline/sentinela externa,
+   exigindo reboot real na VM e evidência em disco persistente separado.
+   Os testes CI verificam negativas, não o reboot real. VM Linux com unit opt-in protegendo
    apenas diretório permitido e testando gravação por processo externo
    antes e depois do reboot. Registrar se montou no momento necessário.
    **Não confundir com proteger `/` ou todo o SO.**
