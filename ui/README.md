@@ -64,6 +64,31 @@ alvo recebe um prompt de autorização do próprio SO, sem elevar todo o
 processo gráfico. Sua VM Windows 7 deverá validar o prompt UAC e a
 instalação do serviço em Program Files.
 
+## Exportação de diagnóstico sem informações locais
+
+O botão **Exportar diagnóstico** agora gera JSON válido usando uma
+**lista explícita de campos permitidos**, em vez de gravar diretamente a
+resposta IPC. Os alvos são identificados como `target-001`, `target-002`
+etc. O relatório contém apenas estado limitado a enums conhecidos,
+contagens, bytes de overlay, flag de erro e estado do filtro/kernel.
+
+Não exporta caminhos de alvos/overlay, mensagens de erro textuais,
+credenciais, tokens de autorização, nonces ou novos campos IPC não
+auditados. O JSON é gravado primeiro em arquivo temporário no mesmo
+diretório e só substitui o destino selecionado após gravação e flush,
+evitando arquivos JSON truncados em falhas normais de escrita.
+
+O relatório **não permite identificar automaticamente o diretório**
+correspondente ao `target-001`; a relação fica visível apenas na sessão
+local do painel, na mesma ordem da lista. A exportação é deliberadamente
+anonimizada para compartilhamento com suporte, não prova de segurança,
+integridade de disco ou recuperação. A permissão do diretório escolhido
+pelo usuário continua sendo responsabilidade desse usuário.
+
+Testes: `python -m unittest -v test_ui_diagnostic_export`. Eles cobrem
+redação de segredos, campos IPC futuros, JSON, contagens malformadas,
+falhas atômicas e a ligação com a ação da GUI.
+
 ## Testes manuais
 
 1. Abrir o painel como usuário comum: status deve aparecer, operações
