@@ -20,6 +20,11 @@ on:
     tags:
       - "v*"
 
+# Cancel obsolete PR builds; never cancel main/tag/manual release builds.
+concurrency:
+  group: packages-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit-tests:
     name: release-tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
