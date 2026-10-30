@@ -76,6 +76,11 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
 5. **Release v0.2.0:** publicar somente quando o CI, as VMs aplicáveis,
    a matriz de suporte e os artefatos (hashes/proveniência) estiverem
    consistentes com os recursos anunciados.
+   O workflow de publicação passa a exigir o manifesto documental
+   `docs/V020_RELEASE_ACCEPTANCE.json` com #63/#49/#54/#56 verificados
+   e revisão humana referenciada em comentários das issues. Atualmente
+   TODOS estão pending: o gate bloqueia v0.2.0; versões anteriores não
+   são afetadas. O gate não autentica evidências nem substitui VMs.
 
 ## Release e testes de VM pendentes
 
@@ -110,4 +115,5 @@ sem a evidência dessas plataformas ou redução explícita do escopo.
 - [Matriz de validação OS-level](OS_LEVEL_VALIDATION.md)
 - [OverlayFS Linux em VM](LINUX_OVERLAYFS_VM.md)
 - [Painel administrativo](../ui/README.md)
+- [Gate de aceite v0.2.0](V020_RELEASE_ACCEPTANCE.md)
 - [GitHub Actions](https://github.com/c1c3ru/userfreezer/actions)
