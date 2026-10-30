@@ -1,0 +1,2 @@
+# Existing Windows CI test dependencies (Python 3.8 / 3.12)
+pywin32==310
