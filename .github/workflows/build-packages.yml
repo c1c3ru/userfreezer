@@ -27,6 +27,9 @@ concurrency:
 
 jobs:
   unit-tests:
+    # PR tests are already covered by tests.yml (same OS/Python matrix and suite).
+    # Keep this release gate for main pushes, tags and manual runs.
+    if: github.event_name != 'pull_request'
     name: release-tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
