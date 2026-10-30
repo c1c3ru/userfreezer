@@ -1,5 +1,10 @@
 # Roteiro de validação manual do Win7 e de proteção OS-level
 
+**Atualização para testes v0.2.0:** usar a prévia `v0.2.0-rc.1` (quando
+publicada e com hashes conferidos) conforme [roteiro humano da RC](V020_HUMAN_TEST_PLAN.md).
+A referência anterior v0.1.13 abaixo é histórica; **não** atribuir à RC
+resultados de um binário v0.1.13. A comprovação do Win7 real permanece pendente.
+
 > **Binários válidos para validar:** [v0.1.13](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.13). A v0.1.9 tem Debian com versão interna 0.1.8 e não deve ser utilizada como prova de integridade da release. Registre o SHA-256 local do EXE Win7 e compare com `SHA256SUMS` da release antes de executar. Os testes só são considerados concluídos com logs e evidências anexadas pelo mantenedor.
 
 **Aplicável ao código da branch que contém as issues #49/#54.**
