@@ -100,15 +100,15 @@ def sanitize_diagnostic(snapshot):
 
 
 def export_sanitized_diagnostic(snapshot, destination):
-    """Atomic export (0600 temporary file); reject oversized reports.
+    """Atomic export (private temporary file where supported); reject oversized reports.
 
     os.replace() replaces the selected destination only after bytes are
     flushed. An existing symlink is replaced, not followed. The caller
     decides where to save; no directory creation or privilege elevation.
     """
-    if not isinstance(destination, (str, bytes, os.PathLike)):
+    if not isinstance(destination, str):
         raise ValueError("destino de diagnostico invalido")
-    final_path = os.fspath(destination)
+    final_path = destination
     if not final_path:
         raise ValueError("destino de diagnostico vazio")
     safe = sanitize_diagnostic(snapshot)
