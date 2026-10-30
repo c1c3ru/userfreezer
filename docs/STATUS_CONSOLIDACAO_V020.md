@@ -1,6 +1,6 @@
 # Consolidação da v0.2.0 — estado e evidências
 
-**Última revisão: 2026-10-29** · Repositório: `c1c3ru/userfreezer`.
+**Última revisão: 2026-10-30** · Repositório: `c1c3ru/userfreezer`.
 Este documento é o ponto central para acompanhar o fechamento das
 issues [#63](https://github.com/c1c3ru/userfreezer/issues/63),
 [#49](https://github.com/c1c3ru/userfreezer/issues/49),
@@ -37,6 +37,13 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    A auditoria por handle NT acrescenta observações limitadas de tamanho e
    hash de arquivos W (sem seguir reparse), correlacionadas a STARTED/DONE;
    isso NUNCA declara um commit recuperado ou retomável.
+   O novo módulo experimental de RESOLUTION acrescenta uma declaração
+   administrativa única, encadeada a REVIEW e INTENT por SHA-256, com
+   decisão externa e aprovação identificadas. Registros históricos permanecem
+   intocados e retry/new epoch continuam desabilitados; isso NÃO comprova
+   recuperação nem autoriza remover checkpoint. O probe Win7 SP1 foi reforçado
+   para verificar versão/build e bytes dos marcadores após reboot, mas a
+   execução na VM licenciada e a validação do CI permanecem pendentes.
    O caminho de mutação oficial permanece fail-closed até haver resolução
    administrativa segura de transações parciais e provas em VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma
