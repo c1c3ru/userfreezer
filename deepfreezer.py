@@ -550,6 +550,56 @@ class DeepFreezer(object):
             for kind, rel, payload in prepared
         ]
 
+    def inspect_windows_native_commit_safety(self, store_directory):
+        """Read-only, fail-closed NT checkpoint/plan assessment (#63).
+
+        Checks a pre-enrolled target and overlay by real NT handles and
+        restrictive ACLs, then refuses any existing (or orphaned) commit
+        checkpoints before optionally building the plan through verified
+        journal/payload handles. Does not authorize production commit.
+        """
+        if os.name != "nt":
+            raise DeepFreezeError("inspecao de commit NT exige Windows")
+        self._require_frozen()
+        from nt_enrollment_store_experimental import (
+            _assert_protected_acl, load_identity_from_store,
+        )
+        from nt_commit_checkpoint_experimental import (
+            inspect_nt_commit_checkpoint, assert_no_orphan_nt_commit_markers,
+        )
+        from win32_relative_directory import open_trusted_root, directory_identity
+
+        for path in (self.target, self.overlay):
+            enrolled = load_identity_from_store(path, store_directory)
+            with open_trusted_root(path, read_control=True) as pinned:
+                if directory_identity(pinned) != enrolled:
+                    raise DeepFreezeError("identidade NT diverge do cadastro")
+                _assert_protected_acl(pinned)
+        with open_trusted_root(store_directory, read_control=True) as store:
+            _assert_protected_acl(store)
+            assert_no_orphan_nt_commit_markers(store, self.target)
+        before = inspect_nt_commit_checkpoint(self.target, store_directory)
+        if before["state"] != "absent":
+            return {
+                "status": "checkpoint_blocks_new_commit",
+                "checkpoint_state": before["state"],
+                "completed": before["completed"],
+                "total": before["total"],
+                "read_only": True, "production_commit_authorized": False,
+            }
+        prepared = (self.preview_windows_native_commit(store_directory)
+                    if self.ops else [])
+        after = inspect_nt_commit_checkpoint(self.target, store_directory)
+        if after != before:
+            raise DeepFreezeError("checkpoint NT mudou durante preflight")
+        return {
+            "status": "experimental_preflight_only",
+            "checkpoint_state": "absent",
+            "operations": len(prepared),
+            "write_bytes": sum(item["bytes"] for item in prepared),
+            "read_only": True, "production_commit_authorized": False,
+        }
+
     def _apply_commit(self):
         # Seguranca fail-closed: o teste concorrente Windows do PR #84
         # provou rename de ancestral mesmo com handles abertos sem

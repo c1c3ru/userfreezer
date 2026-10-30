@@ -28,6 +28,11 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    leitura protegida dos payloads e a reconciliação por handles. O método
    `DeepFreezer.preview_windows_native_commit()` passa a permitir validar
    essas garantias a partir do core real, mas é estritamente somente leitura.
+   O novo `DeepFreezer.inspect_windows_native_commit_safety()` confere
+   identidades/ACLs, recusa marcadores de progresso órfãos sem INTENT,
+   bloqueia checkpoints pendentes, audita a ausência de mudanças durante
+   o preflight e nunca autoriza commit em produção. O executor NT
+   experimental também impede novas intenções quando há marcadores órfãos.
    O registro durável experimental de INTENT/STARTED/DONE/COMPLETE registra
    progresso e bloqueia reaplicações automáticas. O teste real com processo
    Windows encerrado entre mutação e DONE, a inspeção forense somente leitura,

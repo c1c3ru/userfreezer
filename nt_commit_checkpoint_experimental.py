@@ -21,7 +21,7 @@ from nt_enrollment_store_experimental import (
 )
 from win32_relative_directory import (
     create_relative_file, directory_identity, open_trusted_root,
-    read_relative_file,
+    read_relative_file, list_relative_directory,
 )
 
 SCHEMA = 1
@@ -110,6 +110,24 @@ def _write_verified(parent, name, data):
                                   handle_guard=_assert_protected_acl)
     if observed != data:
         raise OSError("checkpoint NT diverge da gravacao confirmada")
+
+
+def assert_no_orphan_nt_commit_markers(store_handle, root):
+    """Fail closed when progress survives but its INTENT is absent.
+
+    A missing or removed INTENT must never make a previously interrupted
+    attempt appear safe to start again. Scan the *pinned* NT store handle,
+    including REVIEW/RESOLUTION, without trusting pathname enumeration.
+    No files are modified and incomplete enumeration is an error.
+    """
+    prefix = _ledger_prefix(root).casefold() + "."
+    names = list_relative_directory(store_handle, limit=10000)
+    relevant = [name.casefold() for name in names
+                if name.casefold().startswith(prefix)]
+    if relevant and prefix + "intent" not in relevant:
+        raise PendingNTCommitError(
+            "marcadores NT orfaos sem INTENT; nao autorizar novo commit")
+    return True
 
 
 def _read_optional(parent, name, max_bytes):
@@ -262,6 +280,9 @@ def apply_checkpointed_plan_experimental(
     from nt_commit_experimental import apply_enrolled_plan_experimental
     with open_trusted_root(store_directory, read_control=True) as store:
         _assert_protected_acl(store)
+        # Reject a store where INTENT was removed but progress, REVIEW or
+        # RESOLUTION survived. Such an incident cannot be restarted safely.
+        assert_no_orphan_nt_commit_markers(store, root)
         # FILE_CREATE ensures an existing intent blocks *all* executions;
         # even a corrupted/truncated pending record is never overwritten.
         try:
