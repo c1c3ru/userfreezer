@@ -37,7 +37,8 @@ def _boot_id():
 def _findmnt(target, option):
     result = subprocess.run(
         ["findmnt", "--kernel", "--noheadings", "--raw",
-         "--output", option, "--target", target],
+         "--output", option,
+         "--mountpoint" if target == TEST_ROOT else "--target", target],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         universal_newlines=True, timeout=15)
     if result.returncode != 0:
@@ -172,6 +173,9 @@ def verify_after_reboot(target, evidence):
         if (not isinstance(value, str) or
                 re.fullmatch(r"[0-9a-f]{64}", value) is None):
             raise ValueError("SHA-256 invalido")
+    if report["marker_sha256"] != hashlib.sha256(
+            b"USERFREEZER-EXTERNAL-VM-WRITE\n").hexdigest():
+        raise ValueError("sentinela original nao pertence ao probe")
     before = report["boot_before"]
     now = _boot_id()
     if not isinstance(before, str) or str(uuid.UUID(before)) != before:
