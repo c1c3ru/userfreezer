@@ -115,7 +115,20 @@ scripts do probe de scratch contra uma pasta real.
    arquivo REVIEW por handle NT sem substituir dados anteriores. O REVIEW
    registra somente a revisão e a referência à evidência; não é assinatura
    criptográfica nem prova de que a restauração foi correta.
-6. **Não liberar retry:** mesmo com REVIEW, o marcador INTENT permanece
+6. **Registrar a resolução administrativa sem liberar retry**, somente após
+   comprovar o procedimento externo e obter aprovação documental. O registro
+   cria RESOLUTION com vínculo ao REVIEW/INTENT e hashes das evidências:
+
+       python packaging\windows\resolve_nt_checkpoint_incident.py --target C:\Alvo --store C:\ProgramData\DeepFreezer\Enroll --record --incident INCIDENT_2026_63 --approval-id APPROVAL_2026_01 --recovery-evidence-sha256 HEX_SHA256_64 --decision restored_from_verified_snapshot --acknowledge-no-retry
+
+   Consultar o registro criado:
+
+       python packaging\windows\resolve_nt_checkpoint_incident.py --target C:\Alvo --store C:\ProgramData\DeepFreezer\Enroll --inspect
+
+   Este comando **não executa restauração**, não verifica assinaturas da
+   aprovação externa e não muda o estado do commit. Consultar o protocolo
+   [Encerramento administrativo NT](NT_COMMIT_ADMIN_RESOLUTION.md).
+7. **Não liberar retry:** mesmo com REVIEW e RESOLUTION, o marcador INTENT permanece
    bloqueando qualquer nova tentativa. Abrir issue de recuperação para
    eventual mecanismo futuro de rotação/encerramento de ciclo com snapshots,
    autenticação, validação cruzada e revisão independente. Nunca apagar
