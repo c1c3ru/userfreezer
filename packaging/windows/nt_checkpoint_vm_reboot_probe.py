@@ -174,13 +174,12 @@ def _verify(base, evidence):
     report = _inspect(root, store)
     if not _check_report(report, root):
         raise RuntimeError("checkpoint ou sentinelas divergiram apos reboot")
+    if report["intent_sha256"] != before["checkpoint"]["intent_sha256"]:
+        raise RuntimeError("identidade da intencao mudou no reboot")
     if report != before["checkpoint"]:
         raise RuntimeError("estado completo dos marcadores mudou no reboot")
     if _marker_fingerprints(root, store) != before.get("marker_sha256"):
         raise RuntimeError("bytes dos marcadores NT mudaram depois do reboot")
-    if report["intent_sha256"] != before["checkpoint"]["intent_sha256"]:
-
-        raise RuntimeError("identidade da intencao mudou no reboot")
     return {
         "result": "PASS_SCRATCH_CHECKPOINT_POST_REBOOT",
         "boot_before": before["boot_before"],
