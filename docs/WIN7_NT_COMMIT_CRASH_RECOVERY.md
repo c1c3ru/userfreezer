@@ -33,6 +33,14 @@ Requer imagem licenciada, snapshot independente, acesso ao console e
 e não esteja sujeito a UWF/EWF/FBWF. O teste **não** configura filtros,
 BCD, discos nem reinicia a máquina.
 
+O probe agora **recusa execução fora do Windows 7 SP1** (6.1 SP1), registra
+build/arquitetura e compara o hash dos bytes exatos dos marcadores NT `INTENT`
+e `STARTED(0)` após reboot. Também exige ausência de `DONE(0)`, marcadores
+subsequentes e `COMPLETE`, além da igualdade do estado completo do checkpoint.
+Isso amplia a detecção de alterações, mas não substitui prova física de perda
+de energia nem segurança do store de produção. Os testes CI modernos validam
+apenas a lógica do verificador por mocks.
+
 Verificar Python 3.8 e pywin32, build do Windows, arquitetura, NTFS, SID do
 executor e hash do checkout/binário. ATENÇÃO: a release v0.1.13 não contém
 este probe; usar o checkout exato da branch/PR testada, nunca atribuir o
