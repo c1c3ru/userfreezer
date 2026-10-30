@@ -409,6 +409,13 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify mandatory VM and UAC acceptance before v0.2.0 publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 packaging/release_acceptance_gate.py \
+            --version "$(tr -d '[:space:]' < VERSION)" \
+            --record docs/V020_RELEASE_ACCEPTANCE.json
       - name: Read version from protected commit
         id: metadata
         shell: bash
