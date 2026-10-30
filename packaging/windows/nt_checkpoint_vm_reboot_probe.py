@@ -9,6 +9,7 @@ The evidence destination MUST be on another drive, outside the test tree.
 import argparse
 import hashlib
 import json
+import platform
 import ntpath
 import os
 import subprocess
@@ -18,6 +19,54 @@ from unittest import mock
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+
+def _win7_sp1_version():
+    """Refuse to label any newer/older runner a Win7 SP1 VM test."""
+    if os.name != "nt":
+        raise RuntimeError("probe Win7 SP1 requer Windows real")
+    version = sys.getwindowsversion()
+    if (version.major, version.minor, version.service_pack_major) != (6, 1, 1):
+        raise RuntimeError("ambiente NAO e Windows 7 SP1 (6.1 SP1)")
+    return {
+        "major": version.major, "minor": version.minor,
+        "service_pack_major": version.service_pack_major,
+        "build": version.build, "platform": platform.machine(),
+    }
+
+
+def _marker_fingerprints(root, store):
+    """Read exact scratch ledger bytes by pinned handles; hash each marker.
+
+    No ACL assertions: the scratch fixture deliberately does not implement
+    privileged real-store provisioning. Only use in disposable VM probe.
+    """
+    from nt_commit_checkpoint_experimental import _ledger_prefix
+    from win32_relative_directory import open_trusted_root, read_relative_file
+    prefix = _ledger_prefix(root)
+    expected = (
+        (".intent", 524288), (".00000.started", 2048),
+    )
+    absent = (
+        ".00000.done", ".00001.started", ".00001.done", ".complete",
+    )
+    fingerprint = {}
+    with open_trusted_root(store) as pinned:
+        for suffix, max_bytes in expected:
+            data = read_relative_file(
+                pinned, prefix + suffix, max_bytes=max_bytes)
+            if not data:
+                raise RuntimeError("marcador do checkpoint ausente: " + suffix)
+            fingerprint[suffix] = hashlib.sha256(data).hexdigest()
+        for suffix in absent:
+            try:
+                read_relative_file(pinned, prefix + suffix, max_bytes=2048)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) in (2, 3):
+                    continue
+                raise
+            raise RuntimeError("marcador inesperado depois do crash: " + suffix)
+    return fingerprint
 
 
 def _boot_stamp():
@@ -68,6 +117,7 @@ def _prepare(base, evidence):
     store = os.path.join(base, "store")
     for item in (root, overlay, store):
         os.mkdir(item)
+    version = _win7_sp1_version()
     boot = _boot_stamp()
     child = subprocess.Popen(
         [sys.executable, "-u", "-c",
@@ -92,8 +142,10 @@ def _prepare(base, evidence):
     report = _inspect(root, store)
     if not _check_report(report, root):
         raise RuntimeError("nao foi registrado STARTED sem DONE")
+    marker_hashes = _marker_fingerprints(root, store)
     artifact = {
-        "schema": 1, "boot_before": boot, "base": base,
+        "schema": 2, "boot_before": boot, "base": base,
+        "windows_version": version, "marker_sha256": marker_hashes,
         "checkpoint": report, "child_exit_code": child.returncode,
         "first_sha256": _sha(os.path.join(root, "first.txt")),
         "second_absent": True,
@@ -109,8 +161,11 @@ def _prepare(base, evidence):
 def _verify(base, evidence):
     with open(evidence, "r", encoding="utf-8") as src:
         before = json.load(src)
-    if before.get("schema") != 1 or before.get("base") != base:
+    if before.get("schema") != 2 or before.get("base") != base:
         raise RuntimeError("base nao corresponde a evidencia anterior")
+    current_version = _win7_sp1_version()
+    if before.get("windows_version") != current_version:
+        raise RuntimeError("build/arquitetura Windows mudaram entre as fases")
     now = _boot_stamp()
     if before["boot_before"] == now:
         raise RuntimeError("SEM REBOOT: boot WMI nao mudou, jamais afirmar PASS")
@@ -121,11 +176,17 @@ def _verify(base, evidence):
         raise RuntimeError("checkpoint ou sentinelas divergiram apos reboot")
     if report["intent_sha256"] != before["checkpoint"]["intent_sha256"]:
         raise RuntimeError("identidade da intencao mudou no reboot")
+    if report != before["checkpoint"]:
+        raise RuntimeError("estado completo dos marcadores mudou no reboot")
+    if _marker_fingerprints(root, store) != before.get("marker_sha256"):
+        raise RuntimeError("bytes dos marcadores NT mudaram depois do reboot")
     return {
         "result": "PASS_SCRATCH_CHECKPOINT_POST_REBOOT",
         "boot_before": before["boot_before"],
         "boot_after": now,
         "checkpoint": report,
+        "marker_sha256": before["marker_sha256"],
+        "windows_version": current_version,
         "scope": "VM scratch only; no production ACL/enrollment/recovery proof",
     }
 
@@ -144,6 +205,8 @@ def main(argv=None):
     if not args.confirm_disposable_vm:
         parser.error("exige --confirm-disposable-vm")
     from nt_enrollment_experimental import _canonical_root
+    # Reject modern runners before touching the VM scratch directories.
+    _win7_sp1_version()
     base = os.path.normpath(args.base)
     evidence = os.path.normpath(args.evidence)
     if base != args.base or evidence != args.evidence:
