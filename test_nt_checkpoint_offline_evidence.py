@@ -119,7 +119,9 @@ class OfflineEvidenceVerification(unittest.TestCase):
                 self.verifier.load_evidence(filename), self.before)
             with open(filename, "w", encoding="utf-8") as stream:
                 stream.write('{"schema":2,"schema":2}')
-            with self.assertRaisesRegex(ValueError, "duplicada"):
+            # The public API deliberately normalizes malformed JSON errors.
+            # Duplicate keys must fail closed; message specifics are not API.
+            with self.assertRaisesRegex(ValueError, "JSON de evidencia invalido"):
                 self.verifier.load_evidence(filename)
             with open(filename, "wb") as stream:
                 stream.write(b"x" * (1024 * 1024 + 1))
