@@ -7,7 +7,6 @@ autoriza cada pedido, usando o token do SO. Uma sessao comum pode VER
 status; operacoes falham sem token elevado/root.
 """
 import argparse
-import json
 import os
 import sys
 import tkinter as tk
@@ -20,6 +19,7 @@ if ROOT_DIR not in sys.path:
 
 from admin_client import request  # noqa: E402
 from ui.admin_elevation import run_admin_action  # noqa: E402
+from ui.diagnostic_export import export_sanitized_diagnostic  # noqa: E402
 
 
 class AdminPanel(object):
@@ -132,16 +132,15 @@ class AdminPanel(object):
         if not destination:
             return
         try:
-            # O snapshot IPC nao inclui credenciais/hash/senha, somente
-            # estados, nomes de alvos e mensagens tecnicas.
-            with open(destination, "w", encoding="utf-8") as f:
-                json.dump(self.last_snapshot, f, indent=2, ensure_ascii=False)
-                f.write("\\n")
-        except OSError as exc:
+            # Never write raw IPC data: paths, error strings or future
+            # fields can disclose confidential host/user information.
+            export_sanitized_diagnostic(self.last_snapshot, destination)
+        except (OSError, ValueError) as exc:
             messagebox.showerror("Falha na exportacao", str(exc), parent=self.root)
             return
         messagebox.showinfo("DeepFreezer",
-                            "Diagnostico exportado (sem credenciais).",
+                            "Diagnostico anonimizado exportado (sem caminhos, "
+                            "mensagens de erro ou credenciais).",
                             parent=self.root)
 
     def selected_target(self):
