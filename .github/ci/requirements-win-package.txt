@@ -1,0 +1,3 @@
+# Existing packaging dependencies for modern Windows build (Python 3.11)
+pywin32==310
+pyinstaller==6.16.0
