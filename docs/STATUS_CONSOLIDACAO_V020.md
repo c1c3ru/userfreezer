@@ -43,7 +43,10 @@ publicada**. As quatro issues permanecem abertas até as provas abaixo.
    intocados e retry/new epoch continuam desabilitados; isso NÃO comprova
    recuperação nem autoriza remover checkpoint. O probe Win7 SP1 foi reforçado
    para verificar versão/build e bytes dos marcadores após reboot, mas a
-   execução na VM licenciada e a validação do CI permanecem pendentes.
+   execução na VM licenciada permanece pendente. O probe foi corrigido para
+   capturar o boot em WMI DMTF independente do idioma e recebeu validador
+   offline portátil para conferir a consistência dos arquivos before/after,
+   sem declarar autenticidade, reboot físico comprovado ou commit certificado.
    O caminho de mutação oficial permanece fail-closed até haver resolução
    administrativa segura de transações parciais e provas em VM Win7. Ainda faltam
    vincular o serviço ao armazenamento NT seguro, persistir de forma

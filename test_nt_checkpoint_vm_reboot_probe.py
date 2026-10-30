@@ -105,6 +105,41 @@ class VMBootEvidenceTests(unittest.TestCase):
                         probe._verify(base, evidence)
                     inspect.assert_not_called()
 
+    def test_boot_stamp_uses_locale_independent_wmi_dmtf(self):
+        probe = _load_probe()
+        with mock.patch.object(probe.subprocess, "run") as runner:
+            runner.return_value.returncode = 0
+            runner.return_value.stdout = "20261030090000.123456-180\n"
+            runner.return_value.stderr = ""
+            stamp = probe._boot_stamp()
+            self.assertEqual(stamp, "20261030090000.123456-180")
+            command = runner.call_args.args[0]
+            self.assertIn("ManagementDateTimeConverter", command[-1])
+            self.assertIn("Get-WmiObject", command[-1])
+            self.assertIn("-NonInteractive", command)
+
+    def test_localized_or_invalid_boot_timestamp_is_rejected(self):
+        probe = _load_probe()
+        for output in ("30/10/2026 09:00:00", "10/30/2026 9:00 AM",
+                       "20261030090000", "20261030090000.123456+18",
+                       "20261030090000.123456-180\\nsecond", ""):
+            with self.subTest(output=output):
+                with mock.patch.object(probe.subprocess, "run") as runner:
+                    runner.return_value.returncode = 0
+                    runner.return_value.stdout = output
+                    runner.return_value.stderr = ""
+                    with self.assertRaisesRegex(RuntimeError, "WMI DMTF"):
+                        probe._boot_stamp()
+
+    def test_powershell_failure_refuses_to_claim_boot(self):
+        probe = _load_probe()
+        with mock.patch.object(probe.subprocess, "run") as runner:
+            runner.return_value.returncode = 1
+            runner.return_value.stdout = ""
+            runner.return_value.stderr = "WMI not available"
+            with self.assertRaisesRegex(RuntimeError, "consulta ao boot WMI"):
+                probe._boot_stamp()
+
     def test_win7_sp1_version_gate(self):
         probe = _load_probe()
         for major, minor, sp in ((10, 0, 0), (6, 1, 0), (6, 2, 0), (6, 1, 1)):

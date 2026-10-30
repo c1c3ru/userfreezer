@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import ntpath
 import os
 import subprocess
@@ -71,16 +72,27 @@ def _marker_fingerprints(root, store):
 
 def _boot_stamp():
     """Use Windows WMI's actual boot time; fail when it cannot be read."""
+    # Formatting a DateTime in PowerShell is locale-dependent (pt-BR,
+    # en-US etc.). Convert back to the invariant WMI DMTF representation.
+    # Windows 7 PowerShell 2.0 supports both Get-WmiObject and this .NET type.
+    statement = (
+        "$ErrorActionPreference='Stop';"
+        "$os=Get-WmiObject -Class Win32_OperatingSystem;"
+        "if ($null -eq $os -or $null -eq $os.LastBootUpTime) "
+        "{ throw 'WMI boot time missing' };"
+        "[System.Management.ManagementDateTimeConverter]::ToDmtfDateTime("
+        "$os.LastBootUpTime)"
+    )
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-         "(Get-WmiObject -Class Win32_OperatingSystem).LastBootUpTime"],
+         statement],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         universal_newlines=True, timeout=30)
     if result.returncode:
         raise RuntimeError("consulta ao boot WMI falhou: " + result.stderr[:200])
     lines = [v.strip() for v in result.stdout.splitlines() if v.strip()]
-    if len(lines) != 1 or len(lines[0]) < 14 or not lines[0][:14].isdigit():
-        raise RuntimeError("timestamp WMI de boot ausente ou invalido")
+    if len(lines) != 1 or re.fullmatch(r"\d{14}\.\d{6}[+-]\d{3}", lines[0]) is None:
+        raise RuntimeError("timestamp WMI DMTF de boot ausente ou invalido")
     return lines[0]
 
 

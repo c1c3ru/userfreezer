@@ -72,6 +72,26 @@ resultado PASS_SCRATCH_CHECKPOINT_POST_REBOOT vale como evidência **deste**
 ensaio de pasta temporária — NÃO certifica durabilidade com perda de energia,
 ACL/DPAPI reais nem recuperação do commit de produção.
 
+### Verificação offline dos dois relatórios
+
+O probe armazena `LastBootUpTime` no formato **DMTF WMI invariável ao
+idioma do Windows** (`AAAAMMDDhhmmss.ffffff±mmm`). Isso evita confundir
+a formatação regional do PowerShell com ausência de reboot. Após copiar
+`checkpoint-before.json` e `checkpoint-after.json` para uma máquina
+de auditoria (Windows/Linux), executar:
+
+    python packaging/windows/verify_nt_checkpoint_evidence.py --before checkpoint-before.json --after checkpoint-after.json
+
+O verificador offline compara exatamente as duas versões do Windows 7 SP1,
+os timestamps DMTF antes/depois, os hashes dos bytes de INTENT e STARTED,
+o estado do checkpoint, as sentinelas e o código não-zero de encerramento
+do subprocesso. Recusa JSONs adulterados, extensos ou com chaves duplicadas.
+Um resultado `CONSISTENT_OFFLINE_EVIDENCE_ONLY` confirma **somente
+consistência entre os JSONs fornecidos**: não autentica os arquivos, o
+hipervisor, um reboot físico real ou a assinatura do operador. Os logs,
+hashes do binário exato, identificação da VM e snapshot precisam de
+conferência independente antes de aceitar o ensaio como evidência.
+
 Anexar os dois JSONs, hashes do checkout e executável, build de Windows,
 ACLs (com dados pessoais redigidos), log de reboot, screenshots do sistema e
 descrição do snapshot à issue #63. Repetir em Windows 10/11/NTFS. Executar
