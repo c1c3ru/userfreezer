@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
-          expected="v${version}"
+          expected="$(python3 packaging/release_channel.py --version "$version" --field tag)"
           if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$expected" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME diverge de VERSION=$version"
             exit 1
@@ -413,15 +413,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Stable 0.2.0 is ALWAYS blocked until four VM/UAC proofs are reviewed.
+          # Testing candidates use Debian 0.2.0~rcN, remain prereleases, and
+          # MUST NOT silently inherit stable acceptance.
           python3 packaging/release_acceptance_gate.py \
             --version "$(tr -d '[:space:]' < VERSION)" \
             --record docs/V020_RELEASE_ACCEPTANCE.json
-      - name: Read version from protected commit
+      - name: Read version and prerelease channel from protected commit
         id: metadata
         shell: bash
         run: |
           set -euo pipefail
-          echo "tag=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "tag=$(python3 packaging/release_channel.py --version "$version" --field tag)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(python3 packaging/release_channel.py --version "$version" --field prerelease)" >> "$GITHUB_OUTPUT"
+          echo "title=$(python3 packaging/release_channel.py --version "$version" --field title)" >> "$GITHUB_OUTPUT"
 
       - name: Block updating existing public tags on version-bump main
         if: github.ref == 'refs/heads/main'
@@ -488,6 +494,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.metadata.outputs.tag }}
+          name: ${{ steps.metadata.outputs.title }}
+          prerelease: ${{ steps.metadata.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.metadata.outputs.prerelease != 'true' }}
           target_commitish: ${{ github.sha }}
           body_path: release_notes.md
           files: |

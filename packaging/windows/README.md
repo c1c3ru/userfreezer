@@ -13,7 +13,12 @@ testar e desinstalar, numa página só — pode ir direto ao
 [INSTALACAO-WINDOWS.md](INSTALACAO-WINDOWS.md). Este README continua
 sendo a referência completa, incluindo a proteção a nível de SO.
 
-## Qual `.exe` baixar
+## Qual `.exe` baixar**Prévia v0.2.0-rc.1 para avaliação humana:** antes de usar os pacotes
+consultar [roteiro de VM da RC](../../docs/V020_HUMAN_TEST_PLAN.md),
+confirmar SHA256SUMS e montar snapshot. O Windows 7 SP1 real continua sem
+certificação; o `thaw --commit` Windows segue bloqueado por segurança.
+
+
 
 São publicados dois, e o nome do arquivo já diz para qual Windows cada
 um serve:

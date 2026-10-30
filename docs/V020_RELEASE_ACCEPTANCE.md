@@ -1,6 +1,11 @@
 # v0.2.0 — gate de aceite com evidências de VM
 
-**Estado atual:** todos os quatro critérios documentais estão PENDENTES em
+**Estado atual:**A prévia de teste humano `v0.2.0-rc.1` é publicada como **prerelease**
+com versão Debian `0.2.0~rc1`, sem liberar os requisitos da v0.2.0 estável.
+Consulte [roteiro de teste da RC](V020_HUMAN_TEST_PLAN.md); os registros
+`verified` só devem ser alterados após as provas reais das VMs.
+
+ todos os quatro critérios documentais estão PENDENTES em
 `docs/V020_RELEASE_ACCEPTANCE.json`. A release v0.2.0 não está autorizada.
 O check automatizado no job de publicação usa
 `packaging/release_acceptance_gate.py`; builds e testes de PR continuam

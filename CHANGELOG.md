@@ -4,6 +4,54 @@ As versões anteriores à v0.1.6 não têm notas escritas; o que entrou nelas
 está nos commits e nos pacotes da página de
 [Releases](https://github.com/c1c3ru/userfreezer/releases).
 
+## v0.2.0-rc.1
+
+**Pré-lançamento de testes humanos da v0.2.0. NÃO é release estável nem
+certificação de proteção de disco.** O pacote Debian usa a versão
+`0.2.0~rc1`, que permite upgrade posterior para `0.2.0`; o identificador
+público do GitHub é `v0.2.0-rc.1`. A publicação estável v0.2.0 permanece
+bloqueada por `docs/V020_RELEASE_ACCEPTANCE.json` até haver evidências reais
+das issues #63, #49, #54 e #56.
+
+### Entregas para avaliação humana
+
+- **#63 NT/Windows:** executor e checkpoints de intenção/progresso nativos
+  experimentais, validação de identidade da raiz/overlay, inspeção forense
+  e encerramento administrativo append-only sem rearmar commits. O core
+  dispõe de `inspect_windows_native_commit_safety()` somente leitura.
+  **`thaw(commit=True)` com operações pendentes no Windows permanece
+  BLOQUEADO por segurança**. Testar o bloqueio sem adulterar dados reais.
+- **#49 Linux:** mecanismo opcional de OverlayFS por diretório e unit systemd
+  desabilitada por padrão, com verificador de reboot Linux em duas fases.
+  Não protege a raiz do SO nem garante ativação antes de qualquer escritor.
+- **#54 VMs:** ferramentas de diagnóstico/dry-run UWF/EWF/FBWF e VHDX/WinPE
+  com verificações fail-closed, ainda exigindo provas reais de boot,
+  exclusões, rollback e recuperação. Não executar em máquina de produção.
+- **#56 UX/IPC:** painel multi-alvo, suporte a overlays personalizados,
+  autorização de ações administrativas e exportação de diagnóstico
+  anonimizado para revisão. UAC e Named Pipe devem ser verificados em
+  sessão gráfica real Windows 7 SP1.
+- **Qualidade:** testes Linux e Windows Python 3.8/3.12, builds do serviço
+  Windows 7/8 (Python 3.8), Windows 10/11, pacote Debian, scripts de
+  instalação, tooling OS-level, hashes SHA-256 e SBOM SPDX no fluxo
+  de release. O binário Win7 construído no runner moderno ainda NÃO
+  demonstra compatibilidade funcional em Windows 7 SP1 real.
+
+### Testes que precisamos receber
+
+Utilizar VMs descartáveis com snapshots, não uma máquina de uso diário.
+Começar pelo pacote apropriado em
+`docs/V020_HUMAN_TEST_PLAN.md`, executar os roteiros das issues e anexar
+às respectivas issues logs, hashes, versão/edição do SO e screenshots sem
+dados pessoais. Para sistemas Windows 7 comum, proteção OS-level por
+UWF/VHDX **não deve ser anunciada como suportada**.
+
+**ATENÇÃO:** uma instalação que inicia não significa que o sistema está
+protegido de escritas de terceiros. O serviço continua *application-level*
+sem filtro de kernel, salvo configuração OS-level explícita e validada
+na plataforma adequada. Não confundir estado `healthy` com proteção
+integral do disco.
+
 ## v0.1.13
 
 **Release intermediária para validação da consolidação v0.2.0.**
