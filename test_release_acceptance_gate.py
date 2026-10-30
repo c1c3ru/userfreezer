@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Release v0.2.0 must not publish before real VM acceptance is reviewed."""
-import copy
+import importlib.util
 import io
 import json
 import os
@@ -9,7 +9,16 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-from packaging import release_acceptance_gate as gate
+def _load_gate():
+    path = os.path.join(os.path.dirname(__file__), "packaging",
+                        "release_acceptance_gate.py")
+    spec = importlib.util.spec_from_file_location("df_release_gate", path)
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+gate = _load_gate()
 
 
 def fixture():
