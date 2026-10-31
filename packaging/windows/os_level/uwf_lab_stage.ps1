@@ -113,11 +113,13 @@ $filter = @(Get-WmiObject -Namespace $namespace -Class UWF_Filter -ErrorAction S
 $volumes = @(Get-WmiObject -Namespace $namespace -Class UWF_Volume -ErrorAction Stop)
 $cNow = @($volumes | Where-Object { $_.DriveLetter -ieq $ProtectedVolume -and $_.CurrentSession -eq $true })
 $cNext = @($volumes | Where-Object { $_.DriveLetter -ieq $ProtectedVolume -and $_.CurrentSession -eq $false })
-if ($cNow.Count -ne 1 -or $cNext.Count -ne 1 -or $filter.Count -ne 1) {
-    throw "Estado UWF nao pode ser comprovado apos comando"
+if ($cNow.Count -gt 1 -or $cNext.Count -gt 1 -or $filter.Count -ne 1) {
+    throw "Estado UWF duplicado/invalido apos comando"
 }
-$current = ([bool]$filter[0].CurrentEnabled -and [bool]$cNow[0].Protected)
-$next = ([bool]$filter[0].NextEnabled -and [bool]$cNext[0].Protected)
+$current = ([bool]$filter[0].CurrentEnabled -and
+            @($cNow | Where-Object { $_.Protected }).Count -eq 1)
+$next = ([bool]$filter[0].NextEnabled -and
+         @($cNext | Where-Object { $_.Protected }).Count -eq 1)
 if ($Stage -and -not $next) { throw "UWF staging divergente; NAO reinicie sem inspecao" }
 if ($VerifyAfterReboot -and -not $current) {
     throw "FAIL: filtro/volume nao estao ativos na sessao atual"
