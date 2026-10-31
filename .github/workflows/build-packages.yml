@@ -154,7 +154,10 @@ jobs:
           --hidden-import os_level_status
           --hidden-import admin_ipc
           --hidden-import os_level_status_win
-          --paths .
+          --hidden-import ui.health_panel
+          --hidden-import ui.protection_setup
+          --hidden-import os_detect
+          --paths . --paths packaging/windows
           packaging/windows/deepfreezer_service.py
 
       - name: Sanity-check the built exe exists and is a real PE binary
@@ -203,7 +206,10 @@ jobs:
           --hidden-import os_level_status
           --hidden-import admin_ipc
           --hidden-import os_level_status_win
-          --paths .
+          --hidden-import ui.health_panel
+          --hidden-import ui.protection_setup
+          --hidden-import os_detect
+          --paths . --paths packaging/windows
           packaging/windows/deepfreezer_service.py
 
       - name: Sanity-check the built exe exists and is a real PE binary
