@@ -125,8 +125,12 @@ def _native_call(executable, verb, option, volume=None):
     if volume is not None:
         _validate_volumes(volume, "D:")
         cmd.append(volume)
-    done = subprocess.run(cmd, shell=False, timeout=45,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        done = subprocess.run(cmd, shell=False, timeout=45,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise RuntimeError("uwfmgr nao concluiu: estado proximo boot indeterminado; "
+                           "inspecionar WMI antes do reboot") from exc
     if done.returncode:
         raise RuntimeError("uwfmgr %s %s falhou com codigo %d; "
                            "estado potencialmente parcial" %
