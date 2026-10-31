@@ -133,3 +133,10 @@ sem a evidência dessas plataformas ou redução explícita do escopo.
 - [Painel administrativo](../ui/README.md)
 - [Gate de aceite v0.2.0](V020_RELEASE_ACCEPTANCE.md)
 - [GitHub Actions](https://github.com/c1c3ru/userfreezer/actions)
+
+## Atualização 31/10/2026 — primeira camada de observação nativa Windows (#49)
+
+O protótipo C `native/windows/uf_audit_minifilter.c` acrescenta a definição de um minifiltro **somente auditoria** para operações IRP_MJ_CREATE, IRP_MJ_WRITE e IRP_MJ_SET_INFORMATION, com opt-in explícito e recusa automática de volumes não autorizados. `native/windows/audit_probe.py` consulta apenas a lista de filtros sem inferir proteção. [Escopo e gates de compilação/VM](../native/windows/README.md).
+
+**Atenção:** é fonte C **ainda não compilada com WDK e não instalada/validada em Win7, Win10 ou Win11**. Nenhum driver assinado, INF, altitude atribuída, redirecionamento de escrita ou rollback de reboot existe nesta etapa. A falha do arquivo criado pelo Explorer permanecer após reboot segue como problema aberto. A release 0.2.0 estável continua bloqueada e #49/#54 permanecem abertas.
+
