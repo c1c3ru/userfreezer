@@ -43,7 +43,7 @@ $allowed = @("Enterprise","EnterpriseN","EnterpriseS","EnterpriseSN",
 if ($allowed -notcontains $edition) {
     throw "Edicao $edition sem compatibilidade UWF comprovada; Windows Home/Pro nao suportado"
 }
-if ($env:SystemDrive.ToUpperInvariant() -ne $ProtectedVolume) {
+if (([string]$env:SystemDrive).ToUpperInvariant() -ne $ProtectedVolume) {
     throw "Sistema nao esta em C:; escopo default inseguro"
 }
 
@@ -117,9 +117,9 @@ if ($cNow.Count -gt 1 -or $cNext.Count -gt 1 -or $filter.Count -ne 1) {
     throw "Estado UWF duplicado/invalido apos comando"
 }
 $current = ([bool]$filter[0].CurrentEnabled -and
-            @($cNow | Where-Object { $_.Protected }).Count -eq 1)
+            (@($cNow | Where-Object { $_.Protected }).Count -eq 1))
 $next = ([bool]$filter[0].NextEnabled -and
-         @($cNext | Where-Object { $_.Protected }).Count -eq 1)
+         (@($cNext | Where-Object { $_.Protected }).Count -eq 1))
 if ($Stage -and -not $next) { throw "UWF staging divergente; NAO reinicie sem inspecao" }
 if ($VerifyAfterReboot -and -not $current) {
     throw "FAIL: filtro/volume nao estao ativos na sessao atual"
