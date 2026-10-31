@@ -215,7 +215,12 @@ def enforce_all(log):
 
 
 def _start_admin_ipc(log, stop_event=None):
-    broker = Broker(CONFIG_PATH, STATUS_PATH, audit=log.info)
+    broker = Broker(
+        CONFIG_PATH, STATUS_PATH, audit=log.info,
+        # Set only in a disposable VM service environment by an admin.
+        # Never enabled by installation or from the unprivileged GUI.
+        uwf_lab_enabled=(
+            os.environ.get("DEEPFREEZER_ENABLE_UWF_LAB", "") == "1"))
 
     def worker():
         try:

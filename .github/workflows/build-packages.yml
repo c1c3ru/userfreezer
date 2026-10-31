@@ -156,6 +156,9 @@ jobs:
           --hidden-import os_level_status_win
           --hidden-import ui.health_panel
           --hidden-import ui.protection_setup
+          --hidden-import uwf_ipc_lab
+          --hidden-import pythoncom
+          --hidden-import win32com.client
           --hidden-import os_detect
           --paths . --paths packaging/windows
           packaging/windows/deepfreezer_service.py
@@ -208,6 +211,9 @@ jobs:
           --hidden-import os_level_status_win
           --hidden-import ui.health_panel
           --hidden-import ui.protection_setup
+          --hidden-import uwf_ipc_lab
+          --hidden-import pythoncom
+          --hidden-import win32com.client
           --hidden-import os_detect
           --paths . --paths packaging/windows
           packaging/windows/deepfreezer_service.py

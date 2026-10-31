@@ -3,6 +3,40 @@
 ESTADO: experimento de VM. Nao certificados Windows 7/10/11 reais.
 A instalacao do servico por si so nao intercepta o Windows Explorer.
 
+## Integracao da GUI com o broker administrativo (experimental)
+
+O painel agora oferece **Consultar UWF** (somente leitura) e
+**Agendar UWF na VM (UAC)**. A segunda acao depende de consentimento e
+snapshot confirmados no assistente, usa ShellExecuteEx/runas para elevar
+somente o EXE instalado em Program Files e realiza duas chamadas IPC
+ao servico: uwf-prepare e uwf-stage. Cada comando e autorizado pelo token
+Windows real do cliente, validado com ImpersonateNamedPipeClient,
+e por um nonce de uso unico, vinculado ao SID, volume C:, volume persistente
+e prazo de 30 segundos. A UI nao tem privilegios para executar uwfmgr.
+
+**IMPORTANTE: operacao desabilitada por padrao.** O servico somente
+habilita o agendamento de laboratorio quando seu ambiente de processo
+contem DEEPFREEZER_ENABLE_UWF_LAB=1, configurado previamente por um
+administrador na VM descartavel e com snapshot. A instalacao comum nao
+define essa variavel. Remover a configuracao apos o ensaio e reiniciar
+o servico; nao utilizar em maquinas de trabalho.
+
+O backend nativo (uwf_ipc_lab.py) recusa Windows 7, Windows 10/11 Home
+e Pro, sistemas que nao foram inicializados em C:, unidades persistentes
+que nao sejam locais NTFS, configuracao UWF preexistente e estados WMI
+inconsistentes. Nao altera nenhuma configuracao quando o modo esta
+desabilitado. Apos agendar, verifica o estado next-session no WMI.
+Nao reinicia e nao verifica rollback de arquivos do Explorer.
+
+Falha durante os dois comandos nativos pode deixar configuracao parcial;
+NUNCA concluir sucesso automaticamente, executar verificacao read-only
+e restaurar o snapshot antes de reiniciar caso o estado seja incerto.
+
+**Limite de seguranca:** ativar variavel e marcar consentimento nao
+comprova que o ambiente e VM ou que o snapshot existe. Essa fase ainda
+depende da disciplina do laboratorio e nao esta habilitada como recurso
+de producao; nenhuma prova real UWF/Win7 foi executada nesta sessao.
+
 ## Escolha na GUI
 
 Abrir painel com o EXE e selecionar "Sistema/volume Windows".

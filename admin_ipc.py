@@ -18,8 +18,8 @@ from deepfreezer import DeepFreezer, DeepFreezeError
 from os_level_status import probe_target
 
 MAX_BYTES = 16384
-ACTIONS = ("status", "prepare", "freeze", "discard", "commit")
-MUTATIONS = ("prepare", "freeze", "discard", "commit")
+ACTIONS = ("status", "prepare", "freeze", "discard", "commit", "uwf-status", "uwf-prepare", "uwf-stage")
+MUTATIONS = ("prepare", "freeze", "discard", "commit", "uwf-prepare", "uwf-stage")
 
 
 class ProtocolError(ValueError):
@@ -107,10 +107,11 @@ def overlay_usage(path, file_limit=5000):
 class Broker(object):
     """Handler desacoplado do transporte; auth do kernel em todo pedido."""
 
-    def __init__(self, config_path, status_path, audit=None):
+    def __init__(self, config_path, status_path, audit=None, uwf_lab_enabled=False):
         self.config_path = config_path
         self.status_path = status_path
         self.audit = audit
+        self.uwf_lab_enabled = (uwf_lab_enabled is True)
         self._mutex = threading.RLock()
         self._pending = {}  # nonce -> (peer, acao, alvo, expira no monotonic)
 
@@ -126,6 +127,54 @@ class Broker(object):
             if obj["action"] in MUTATIONS and not is_admin:
                 raise PermissionError("permissao administrativa exigida")
             with self._mutex:
+                if obj["action"] in ("uwf-status", "uwf-prepare", "uwf-stage"):
+                    if os.name != "nt":
+                        raise ProtocolError("UWF existe apenas no Windows")
+                    target, persistent = obj.get("target"), obj.get("operation")
+                    from uwf_ipc_lab import (
+                        _validate_volumes, inspect_uwf, stage_uwf_lab,
+                    )
+                    _validate_volumes(target, persistent)
+                    if obj["action"] == "uwf-status":
+                        result = inspect_uwf(target, persistent)
+                        result["lab_staging_enabled"] = self.uwf_lab_enabled
+                    elif obj["action"] == "uwf-prepare":
+                        if not self.uwf_lab_enabled:
+                            raise PermissionError("provisionamento UWF bloqueado por padrao")
+                        observed = inspect_uwf(target, persistent)
+                        if (observed["current_filter_enabled"] or
+                                observed["next_filter_enabled"] or
+                                observed["current_c_protected"] or
+                                observed["next_c_protected"]):
+                            raise RuntimeError("UWF ja configurado: nao sobrepor")
+                        now = time.monotonic()
+                        self._pending = {k: v for k, v in self._pending.items()
+                                         if v[3] > now}
+                        if len(self._pending) >= 128:
+                            raise ProtocolError("muitas autorizacoes pendentes")
+                        token = secrets.token_urlsafe(24)
+                        self._pending[token] = (
+                            identity, "uwf-stage", (target, persistent), now + 30)
+                        result = {"token": token, "expires_in": 30,
+                                  "status": "administrative_confirmation_pending",
+                                  "system_volume": target,
+                                  "persistent_volume": persistent,
+                                  "rollback_verified": False}
+                    else:
+                        token = obj.get("confirm")
+                        if not isinstance(token, str):
+                            raise ProtocolError("nonce UWF obrigatorio")
+                        prepared = self._pending.pop(token, None)
+                        if (prepared is None or prepared[0] != identity or
+                                prepared[1] != "uwf-stage" or
+                                prepared[2] != (target, persistent) or
+                                prepared[3] <= time.monotonic()):
+                            raise PermissionError("nonce UWF invalido, usado ou expirado")
+                        if not self.uwf_lab_enabled:
+                            raise PermissionError("provisionamento UWF desabilitado")
+                        result = stage_uwf_lab(target, persistent, enabled=True)
+                    self._audit(identity, obj, True, "UWF lab verificado")
+                    return {"v": 1, "id": obj["id"], "ok": True, "result": result}
                 targets = load_targets(self.config_path)
                 if obj["action"] == "status":
                     # O resultado e a ultima verificacao, NAO status de OS-level.
@@ -222,7 +271,7 @@ class Broker(object):
             self._audit(identity, obj, True, "ok")
             return {"v": 1, "id": obj["id"], "ok": True, "result": result}
         except (ProtocolError, PermissionError, DeepFreezeError, OSError,
-                TypeError, ValueError) as exc:
+                RuntimeError, TypeError, ValueError) as exc:
             self._audit(identity, obj, False, str(exc))
             return {"v": 1, "id": obj.get("id"), "ok": False,
                     "error": {"code": type(exc).__name__, "message": str(exc)}}

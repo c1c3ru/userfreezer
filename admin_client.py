@@ -27,14 +27,38 @@ def request(action="status", target=None, confirm=None, operation=None,
 def main(argv=None):
     p = argparse.ArgumentParser(description="DeepFreezer - cliente IPC local")
     p.add_argument("action", choices=("status", "freeze", "prepare", "discard", "commit",
-                                      "approve-discard", "approve-commit"))
+                                      "approve-discard", "approve-commit", "uwf-status", "approve-uwf-stage"))
     p.add_argument("--target", help="alvo cadastrado")
     p.add_argument("--operation", choices=("discard", "commit"))
     p.add_argument("--confirm", help="nonce fornecido por prepare")
+    p.add_argument("--persistent-volume", default="D:")
+    p.add_argument("--acknowledge-vm-snapshot", action="store_true")
+    p.add_argument("--acknowledge-discard-writes", action="store_true")
     p.add_argument("--socket", default=None)
     a = p.parse_args(argv)
     try:
-        if a.action in ("approve-discard", "approve-commit"):
+        if a.action == "approve-uwf-stage":
+            from uwf_ipc_lab import _validate_volumes
+            _validate_volumes(a.target, a.persistent_volume)
+            if not (a.acknowledge_vm_snapshot and
+                    a.acknowledge_discard_writes):
+                raise PermissionError("exige VM com snapshot e consentimento explicito")
+            prepared = request("uwf-prepare", a.target,
+                               operation=a.persistent_volume,
+                               socket_path=a.socket)
+            if not prepared.get("ok"):
+                response = prepared
+            else:
+                response = request(
+                    "uwf-stage", a.target,
+                    confirm=prepared["result"]["token"],
+                    operation=a.persistent_volume,
+                    socket_path=a.socket)
+        elif a.action == "uwf-status":
+            response = request("uwf-status", a.target or "C:",
+                               operation=a.persistent_volume,
+                               socket_path=a.socket)
+        elif a.action in ("approve-discard", "approve-commit"):
             if not a.target:
                 raise ValueError("target obrigatorio para acao privilegiada")
             op = a.action[len("approve-"):]
@@ -50,7 +74,7 @@ def main(argv=None):
                                    socket_path=a.socket)
         else:
             response = request(a.action, a.target, a.confirm, a.operation, a.socket)
-    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+    except (OSError, ValueError, PermissionError, RuntimeError, KeyError) as exc:
         if sys.stdout is not None:
             print(json.dumps({"ok": False, "error": str(exc)}))
         return 2
