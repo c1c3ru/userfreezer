@@ -51,7 +51,7 @@ Write-Host "Windows 10/11: UWF somente em edicoes compativeis e quando habilitad
 $uwf = Get-Command uwfmgr.exe -ErrorAction SilentlyContinue
 if ($null -ne $uwf) {
     Write-Host "UWF: utilitario encontrado; consultar configuracao atual (somente leitura)."
-    & uwfmgr.exe get-config
+    & uwfmgr.exe filter get-config
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Consulta UWF falhou; filtro NAO verificado."
     }
