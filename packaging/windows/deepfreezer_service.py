@@ -246,9 +246,8 @@ if _HAVE_PYWIN32:
     class DeepFreezerService(win32serviceutil.ServiceFramework):
         _svc_name_ = "DeepFreezer"
         _svc_display_name_ = "DeepFreezer"
-        _svc_description_ = ("Retem o estado congelado das arvores de "
-                              "diretorio configuradas; mudancas caem em "
-                              "overlay e sao descartadas no proximo boot.")
+        _svc_description_ = ("Overlay exclusivo da API DeepFreezer. Nao intercepta "
+                              "gravacoes externas do Explorer/Windows nem protege disco.")
 
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)

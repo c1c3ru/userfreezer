@@ -3,7 +3,7 @@
 """
 deepfreezer — Deep Freezer cross-platform (Windows/Linux), Python 3.6+, só stdlib.
 
-Modelo (equivalente ao Deep Freeze comercial):
+Modelo: API application-level (NAO equivale ao filtro de disco Deep Freeze):
   freeze() : snapshot da arvore T (manifest com tamanho/mtime/hash opcional).
              Depois disso, todo cambio passa pela camada de overlay. A arvore
              original fica intocada em disco.

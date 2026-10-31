@@ -38,7 +38,7 @@ class AdminPanel(object):
                   font=("TkDefaultFont", 15, "bold")).pack(anchor="w")
         self.status = ttk.Label(header, text="Conectando ao servico...")
         self.status.pack(anchor="w", pady=4)
-        ttk.Label(header, text="API healthy != OS protegido. Estado do kernel consultado separadamente; ativo por diretorio nao comprova reboot.",
+        ttk.Label(header, text="ATENCAO: este app NAO reverte arquivos criados no Explorer ou na Area de Trabalho. API healthy nao significa disco protegido; kernel nao certificado.",
                   wraplength=1120).pack(anchor="w")
 
         body = ttk.Frame(root, padding=(12, 0, 12, 10))

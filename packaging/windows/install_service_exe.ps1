@@ -144,3 +144,9 @@ while (-not (Get-Service -Name DeepFreezer -ErrorAction SilentlyContinue)) {
 & sc.exe config DeepFreezer start= auto
 
 Write-Host "instalado. revise $TargetConfig e rode: Start-Service DeepFreezer"
+Write-Warning "O servico NAO faz rollback de arquivos criados no Explorer/Area de Trabalho."
+Write-Warning "Protecao do Windows completo depende de filtro OS-level, NAO ativado por este instalador."
+Write-Warning "O config.json padrao tem targets vazio. Mesmo apos configurar um alvo, a API nao intercepta gravacoes externas."
+Write-Host "Diagnostico SOMENTE LEITURA (script disponivel no repositorio):"
+Write-Host "  packaging\\windows\\diagnose_protection.ps1"
+
