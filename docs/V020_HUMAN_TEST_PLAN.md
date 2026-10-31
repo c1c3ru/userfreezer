@@ -1,4 +1,11 @@
 # UserFreezer v0.2.0-rc.1 — roteiro de teste humano
+**Resultado humano observado:** arquivo criado no Desktop pela API do
+Explorer permanece apos o reboot, logo a protecao de disco nao esta
+ativa na RC1. A escolha de pasta/usuario pela GUI, mesmo quando
+configurada para a API, nao muda esse fato. Nao trate instalacao de
+servico como prova de congelamento do Windows. Consultar
+[diagnostico e modo OS-level](WINDOWS_PROTECTION_SCOPE_GUI.md).
+
 
 > **Pré-lançamento, não certificado.** Uso somente em VMs descartáveis
 > com snapshot, backup e mídia de recuperação. O `thaw --commit` com
