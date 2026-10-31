@@ -40,6 +40,20 @@ filtros sem prova. [Detalhes](WINDOWS_PROTECTION_SCOPE_GUI.md).
 | [#54: VM](https://github.com/c1c3ru/userfreezer/issues/54) | PRs #91, #97, #98 e #99: recusa de falso PASS sem reboot, bloqueio VHDX fora do WinPE, verificação de comandos nativos, teste de exclusão persistente com sentinela e comparação de caminhos | Rodar UWF e EWF/FBWF em versões licenciadas e VHDX/WinPE em VMs descartáveis; anexar provas de boot, recuperação e rollback |
 | [#56: UX](https://github.com/c1c3ru/userfreezer/issues/56) | PRs #90 e #96: autostart por usuário, multialvos, overlay customizado, erros ACL, smoke Tk Linux/Xvfb e Windows Python 3.8/3.12, recusa de ações não autorizadas; exportação de diagnóstico IPC anonimizada, com JSON válido, whitelist e escrita atômica | Sessão GUI Windows 7 SP1, prompt UAC real, fluxos operacionais e capturas/instruções finais na documentação |
 
+## UWF administrativo autenticado — novo ciclo
+
+Novo modulo uwf_ipc_lab.py separado do core permite inspecionar o
+UWF nativo por WMI e agendar UWF em VM de laboratorio apenas apos
+elevacao/UAC, confirmacao dupla e nonce valido de uso unico no
+Named Pipe (ligado ao SID da conta, C: e volume D:..Z: separado).
+O servico nao habilita staging por padrao; exige flag explicita
+DEEPFREEZER_ENABLE_UWF_LAB=1 em seu ambiente configurado pelo
+administrador do laboratorio. A UI so mostra o estado WMI de
+preparacao/ativacao, com rollback externo e prova de reboot sempre
+NAO VERIFICADOS. Windows 7 comum e Home/Pro seguem SEM backend.
+A integracao de GUI nao substitui a validacao real de UWF em VM.
+[Procedimento e cuidados](OS_LEVEL_OFFLINE_C_DRIVE_SETUP.md).
+
 ## C: offline e persistencia separada — novo ciclo
 
 O assistente UI agora parte de C: e solicita unidade D: ou outra
