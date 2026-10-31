@@ -96,3 +96,16 @@ def _runas_win(args):
         return True
     finally:
         win32api.CloseHandle(process)
+
+def run_admin_uwf_stage(persistent_volume):
+    """UAC to installed trusted EXE; broker still validates SID+nonce+OS."""
+    from uwf_ipc_lab import _validate_volumes
+    _validate_volumes("C:", persistent_volume)
+    if os.name != "nt":
+        raise PermissionError("UWF disponivel somente em Windows")
+    return _runas_win([
+        "approve-uwf-stage", "--target", "C:",
+        "--persistent-volume", persistent_volume,
+        "--acknowledge-vm-snapshot",
+        "--acknowledge-discard-writes",
+    ])
