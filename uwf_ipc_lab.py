@@ -44,6 +44,10 @@ def _preconditions(target, persistent):
     drive_type = ctypes.windll.kernel32.GetDriveTypeW(persistent + "\\")
     if drive_type != 3:  # DRIVE_FIXED, not mapped/removable/network.
         raise RuntimeError("volume persistente precisa ser disco local fixo")
+    import win32api
+    filesystem = win32api.GetVolumeInformation(persistent + chr(92))[4]
+    if str(filesystem).upper() != "NTFS":
+        raise RuntimeError("volume persistente deve ser NTFS no laboratorio")
     return info
 
 
