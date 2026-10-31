@@ -281,6 +281,13 @@ if _HAVE_PYWIN32:
             self.ipc_stop.set()
 
 
+def _launch_admin_panel():
+    """Open the local GUI without granting admin rights or installing filters."""
+    from ui.health_panel import main as gui_main
+    gui_main([])
+    return 0
+
+
 def _dispatch_or_explain():
     """Chamado sem argumentos: pode ser o SCM iniciando o servico ou
     alguem dando duplo clique no .exe.
@@ -322,19 +329,21 @@ def _dispatch_or_explain():
             log.exception("falha despachando o servico pro SCM")
             raise
         log.info("nao foi o SCM que iniciou este processo (erro 1063)")
-        if _running_interactively():
-            # Duplo clique direto no .exe. Aqui bloquear e' inofensivo:
-            # ha' um usuario na frente da tela pra fechar a caixa.
-            _msgbox(
-                "DeepFreezer nao esta instalado como servico do Windows.\n\n"
-                "Executar este .exe com duplo clique nao faz nada de util: ele "
-                "so' protege as pastas configuradas quando roda como servico, "
-                "reforcando o congelamento a cada boot.\n\n"
-                "Abra o PowerShell como Administrador e rode:\n"
-                "  install_service_exe.ps1\n\n"
-                "(ver packaging\\windows\\README.md para as formas de "
-                "instalar o servico)",
-                title="DeepFreezer - nao instalado como servico")
+        # A 1063 from the SCM dispatcher is definitive: this invocation
+        # is NOT from the Windows service controller. The GUI will attempt
+        # to open even when SESSIONNAME is absent from the environment.
+        try:
+            return _launch_admin_panel()
+        except Exception as gui_error:
+            log.exception("nao foi possivel abrir GUI local")
+            if _running_interactively():
+                _msgbox(
+                    "O painel nao pode ser aberto.\n\n"
+                    "Verifique a instalacao do servico e os logs em "
+                    "C:\\ProgramData\\DeepFreezer.\n\n"
+                    "Nenhuma protecao do Windows foi ativada.\n\n"
+                    "Erro: %s" % gui_error,
+                    title="UserFreezer - GUI indisponivel")
         return 1
     return 0
 
@@ -342,6 +351,8 @@ def _dispatch_or_explain():
 def main():
     # Cli local autenticado. Quando PyInstaller --noconsole nao existe
     # stdout; a UAC/GUI consulta o ExitCodeProcess (0=sucesso).
+    if len(sys.argv) > 1 and sys.argv[1] == "--ui":
+        return _launch_admin_panel()
     if len(sys.argv) > 1 and sys.argv[1] == "--admin-cli":
         from admin_client import main as client_main
         return client_main(sys.argv[2:])
