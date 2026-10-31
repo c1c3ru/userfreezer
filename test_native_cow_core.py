@@ -29,7 +29,6 @@ class NativeCowReferenceTests(unittest.TestCase):
                      "CreateFileW(", "WriteFile(", "DeviceIoControl(",
                      "ZwWriteFile(", "FltWriteFile(", "system("):
             self.assertNotIn(call, source)
-        self.assertIn("FLTR", "FLTR")  # Preserve no-op compatibility with 3.8
 
     def test_actual_compiled_c_reference(self):
         """Run native behavioral tests when a C compiler is available."""
