@@ -10,6 +10,12 @@ Use only on a disposable, snapshotted Windows 10/11 UWF-capable VM.
 import ctypes
 import os
 import subprocess
+import sys
+
+_WINDOWS_TOOLS = os.path.join(os.path.dirname(__file__), "packaging", "windows")
+if os.path.isdir(_WINDOWS_TOOLS) and _WINDOWS_TOOLS not in sys.path:
+    sys.path.insert(0, _WINDOWS_TOOLS)
+import os_detect  # noqa: E402
 
 ALLOWED_PERSISTENT = frozenset("%s:" % chr(c) for c in range(68, 91))
 SUPPORTED_EDITION = frozenset((
@@ -29,7 +35,6 @@ def _preconditions(target, persistent):
     _validate_volumes(target, persistent)
     if os.name != "nt":
         raise RuntimeError("UWF exige Windows real")
-    from packaging.windows import os_detect
     info = os_detect.get_os_info()
     if (info["build"] < 10240 or info["edition"] not in SUPPORTED_EDITION or
             os_detect.classify(info["build"], info["edition"])["strategy"] != "uwf"):
