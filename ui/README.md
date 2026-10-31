@@ -64,6 +64,23 @@ alvo recebe um prompt de autorização do próprio SO, sem elevar todo o
 processo gráfico. Sua VM Windows 7 deverá validar o prompt UAC e a
 instalação do serviço em Program Files.
 
+## Configuracao offline de C: e dados persistentes
+
+O seletor abre em modo Sistema/volume Windows e propoe proteger C:,
+com dados permanentes em outro volume local (D: como sugestao).
+O usuario confirma backup e consentimento antes de exportar a
+proposta JSON inativa. Nenhum arquivo e movido de C: para D: e
+a proposta nao altera servico, registro, UAC ou filtro.
+
+Para ensaiar um backend nativo REAL, somente em VM Windows 10/11
+Enterprise/Education/IoT com UWF ja instalado e unidade D: livre,
+usar o script de laboratorio do ZIP de ferramentas OS-level:
+packaging/windows/os_level/uwf_lab_stage.ps1. Ele exige privilegio,
+confirmacao explicita e reboot manual; nunca significa protecao ativa
+ate comprovar o volume filtrado e rollback do Explorer.
+
+[Passos e limitacoes](../docs/OS_LEVEL_OFFLINE_C_DRIVE_SETUP.md).
+
 ## Exportação de diagnóstico sem informações locais
 
 O botão **Exportar diagnóstico** agora gera JSON válido usando uma

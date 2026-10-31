@@ -8,7 +8,9 @@ issues [#63](https://github.com/c1c3ru/userfreezer/issues/63),
 [#56](https://github.com/c1c3ru/userfreezer/issues/56). Atualize-o em cada PR
 que altere os critérios de aceite, junto com o comentário na issue.
 
-**Versão pública de validação confirmada:****Prévia v0.2.0-rc.1 em preparação para testes humanos:** o pacote Debian
+**Versão pública de validação confirmada:**
+
+**Prévia v0.2.0-rc.1 em preparação para testes humanos:** o pacote Debian
 utiliza `0.2.0~rc1` e o GitHub publica `v0.2.0-rc.1` como prerelease
 após CI e empacotamento. A versão estável v0.2.0 permanece BLOQUEADA
 pelos aceites #63/#49/#54/#56. Roteiro: [teste humano da RC](V020_HUMAN_TEST_PLAN.md).
@@ -18,7 +20,9 @@ confirmação da publicação da prévia e seus artefatos.
  [v0.1.13](https://github.com/c1c3ru/userfreezer/releases/tag/v0.1.13), publicada em 28/10/2026. A tag da release e o workflow de publicação apontam ao commit imutável `b8ac4e85e07f3907a49238d18e6bdf98f5ab3e36`; a branch `main` pode avançar depois da tag com atualizações documentais sem alterar os binários dessa versão. [CI #40753516522](https://github.com/c1c3ru/userfreezer/actions/runs/40753516522) terminou `success` com 7 artefatos (`.deb`, dois `.exe`, dois `.zip`, SHA256SUMS, SPDX). Compare os hashes antes dos testes de VM. A `v0.2.0` **não foi
 publicada**. As quatro issues permanecem abertas até as provas abaixo.
 
-## Estado por issue**Resultado do ensaio humano (31/10/2026):** o programa executou nas
+## Estado por issue
+
+**Resultado do ensaio humano (31/10/2026):** o programa executou nas
 VMs, mas um arquivo criado externamente no Desktop permaneceu apos
 reinicializacao. Isso revela que a v0.2.0-rc.1 NAO atende ao criterio
 principal de protecao estilo Deep Freeze. O instalador cria targets vazio
@@ -35,6 +39,19 @@ filtros sem prova. [Detalhes](WINDOWS_PROTECTION_SCOPE_GUI.md).
 | [#49: OS-level](https://github.com/c1c3ru/userfreezer/issues/49) | PR #88: gravação externa real interceptada por kernel OverlayFS Linux por diretório; PR #93: estado independente no painel; PR #102: unit systemd opcional, desativada no pacote, com guard de conflito; PR #104: exigir alvo e ancestrais root-owned e não graváveis por terceiros | Reboot e rollback real de VM, exclusões, ativação antes de escritores, estratégia de rootfs/initramfs e filtros Windows verificados |
 | [#54: VM](https://github.com/c1c3ru/userfreezer/issues/54) | PRs #91, #97, #98 e #99: recusa de falso PASS sem reboot, bloqueio VHDX fora do WinPE, verificação de comandos nativos, teste de exclusão persistente com sentinela e comparação de caminhos | Rodar UWF e EWF/FBWF em versões licenciadas e VHDX/WinPE em VMs descartáveis; anexar provas de boot, recuperação e rollback |
 | [#56: UX](https://github.com/c1c3ru/userfreezer/issues/56) | PRs #90 e #96: autostart por usuário, multialvos, overlay customizado, erros ACL, smoke Tk Linux/Xvfb e Windows Python 3.8/3.12, recusa de ações não autorizadas; exportação de diagnóstico IPC anonimizada, com JSON válido, whitelist e escrita atômica | Sessão GUI Windows 7 SP1, prompt UAC real, fluxos operacionais e capturas/instruções finais na documentação |
+
+## C: offline e persistencia separada — novo ciclo
+
+O assistente UI agora parte de C: e solicita unidade D: ou outra
+unidade LOCAL distinta e nao protegida para arquivos persistentes.
+Exige consentimento e confirmacao de snapshot, gerando plano offline
+INATIVO (nao lido pelo servico). Ha script de laboratorio Win10/11
+Enterprise/Education/IoT com UWF nativo ja instalado, que valida
+volume/edicao e agenda protecao C: apenas mediante flags explicitas,
+sem reboot automatico. Precisa de teste humano Explorer/Desktop apos
+duas reinicializacoes para comprovar rollback. Windows 7 comum segue
+sem backend proprio funcional. Documentacao: [C:/D: offline e UWF em
+VM](OS_LEVEL_OFFLINE_C_DRIVE_SETUP.md).
 
 ## Engenharia de loop: próximos ciclos de aceitação
 

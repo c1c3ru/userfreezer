@@ -13,6 +13,16 @@ testar e desinstalar, numa página só — pode ir direto ao
 [INSTALACAO-WINDOWS.md](INSTALACAO-WINDOWS.md). Este README continua
 sendo a referência completa, incluindo a proteção a nível de SO.
 
+## Assistente C: + area persistente
+
+A GUI agora sugere C: e volume persistente distinto D:. Exige backup e
+consentimento para EXPORTAR PROPOSTA INATIVA; ainda nao aplica UWF via
+GUI nem protege Windows 7 comum. No pacote ZIP OS-level ha script
+uwf_lab_stage.ps1 para ativacao EXPLICITA em VM Windows 10/11 compativel
+com UWF ja presente, e verifica o estado nativo antes/depois de reboot.
+
+Ver [roteiro completo](../../docs/OS_LEVEL_OFFLINE_C_DRIVE_SETUP.md).
+
 ## Qual `.exe` baixar
 
 **Prévia
