@@ -85,22 +85,22 @@ static int preflight_capacity_atomicity(void)
     CHECK(uf_cow_init(&state, original, TOTAL_BYTES, SECTOR_BYTES,
                       overlay, sizeof(overlay), marks, sizeof(marks),
                       2) == UF_COW_OK);
-    CHECK(uf_cow_write(&state, 512, bytes, 1) == UF_COW_OK);
+    CHECK(uf_cow_write(&state, 0, bytes, 1) == UF_COW_OK);
     CHECK(state.dirty_count == 1);
     memcpy(snapshot, overlay, sizeof(overlay));
     memcpy(marker_snapshot, marks, sizeof(marks));
 
-    /* Would touch two new sectors; caller must see all-or-nothing. */
+    /* Sectors 1 and 2 are BOTH clean; 1 remaining slot cannot fit 2. */
     CHECK(uf_cow_write(&state, 1022, bytes, sizeof(bytes)) ==
           UF_COW_CAPACITY);
     CHECK(state.dirty_count == 1);
     CHECK(memcmp(overlay, snapshot, sizeof(overlay)) == 0);
     CHECK(memcmp(marks, marker_snapshot, sizeof(marks)) == 0);
-    CHECK(uf_cow_write(&state, 0, bytes, 1) == UF_COW_OK);
+    CHECK(uf_cow_write(&state, 1536, bytes, 1) == UF_COW_OK);
     CHECK(state.dirty_count == 2);
-    CHECK(uf_cow_write(&state, 1536, bytes, 1) == UF_COW_CAPACITY);
-    CHECK(uf_cow_read(&state, 1536, scratch, 1) == UF_COW_OK);
-    CHECK(scratch[0] == original[1536]);
+    CHECK(uf_cow_write(&state, 1024, bytes, 1) == UF_COW_CAPACITY);
+    CHECK(uf_cow_read(&state, 1024, scratch, 1) == UF_COW_OK);
+    CHECK(scratch[0] == original[1024]);
     return 0;
 }
 
