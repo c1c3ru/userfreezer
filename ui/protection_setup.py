@@ -20,6 +20,8 @@ if _WINDOWS_TOOLS not in sys.path:
 
 import os_detect  # noqa: E402
 from ui.offline_protection_plan import make_protection_plan, save_proposal_create_only  # noqa: E402
+from ui.admin_elevation import run_admin_uwf_stage  # noqa: E402
+from admin_client import request  # noqa: E402
 
 
 def capability_info(build, edition):
@@ -144,9 +146,80 @@ class ProtectionScopeDialog(object):
         ttk.Button(
             actions, text="Exportar proposta offline...",
             command=self.export_proposal).pack(side="left", pady=6)
+        ttk.Button(
+            actions, text="Consultar UWF",
+            command=self.inspect_native_uwf).pack(side="left", padx=7)
+        ttk.Button(
+            actions, text="Agendar UWF na VM (UAC)",
+            command=self.stage_native_uwf).pack(side="left", padx=7)
         ttk.Button(actions, text="Fechar", command=self.top.destroy).pack(
             side="right", pady=6)
         self.refresh_choice()
+
+    def inspect_native_uwf(self):
+        if self.capability.get("strategy") != "uwf":
+            messagebox.showwarning(
+                "UWF indisponivel",
+                "Este Windows nao oferece UWF nativo confirmado pela edicao.",
+                parent=self.top)
+            return
+        try:
+            result = request(
+                "uwf-status", "C:", operation=self.persistent_drive.get())
+            if not result.get("ok"):
+                raise RuntimeError((result.get("error") or {}).get(
+                    "message", "UWF indisponivel"))
+            data = result["result"]
+            self.status.config(
+                text=("UWF (WMI): %s | staging em laboratorio: %s | "
+                      "rollback externo NAO CERTIFICADO" %
+                      (data["status"], data["lab_staging_enabled"])))
+        except (RuntimeError, OSError, ValueError, PermissionError) as exc:
+            messagebox.showerror("Inspecao UWF recusada", str(exc), parent=self.top)
+
+    def stage_native_uwf(self):
+        if self.mode.get() != "windows" or self.capability.get("strategy") != "uwf":
+            messagebox.showerror(
+                "Nao suportado",
+                "Ativacao UWF somente em Windows 10/11 com UWF nativo.",
+                parent=self.top)
+            return
+        try:
+            make_protection_plan(
+                "windows", system_drive="C:",
+                persistent_drive=self.persistent_drive.get(),
+                admin_consent=self.consent.get(),
+                backup_confirmed=self.backup.get(),
+                capability=self.capability)
+        except (ValueError, PermissionError) as exc:
+            messagebox.showerror("Consentimento obrigatorio", str(exc),
+                                 parent=self.top)
+            return
+        if not messagebox.askyesno(
+                "ALTERACAO DO BOOT EM VM DESCARTAVEL",
+                "O filtro UWF real pode alterar paginacao e recuperacao "
+                "do Windows, e descartar novas gravacoes em C: apos reboot. "
+                "Voce ja salvou o snapshot da VM e confirmou que D: "
+                "sera persistente? Deseja solicitar UAC e agendar?",
+                parent=self.top):
+            return
+        try:
+            run_admin_uwf_stage(self.persistent_drive.get())
+        except (OSError, RuntimeError, PermissionError, ValueError) as exc:
+            self.status.config(text="UWF: resultado recusado/indeterminado")
+            messagebox.showerror(
+                "UWF nao confirmado",
+                "Nao reinicie sem inspecionar a configuracao UWF. %s" % exc,
+                parent=self.top)
+            return
+        self.status.config(
+            text="UWF AGENDADO PARA PROXIMO BOOT; NAO ATIVO NESTA SESSAO.")
+        messagebox.showinfo(
+            "Reboot manual necessario",
+            "O servico confirmou o agendamento no WMI. Reinicie a VM "
+            "MANUALMENTE e depois teste Explorer/rollback. "
+            "Nenhuma equivalencia ao Deep Freeze foi certificada.",
+            parent=self.top)
 
     def export_proposal(self):
         # Data-only; no IPC, UAC or filter changes.
