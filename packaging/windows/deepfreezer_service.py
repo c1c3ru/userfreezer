@@ -329,13 +329,14 @@ def _dispatch_or_explain():
             log.exception("falha despachando o servico pro SCM")
             raise
         log.info("nao foi o SCM que iniciou este processo (erro 1063)")
-        if _running_interactively():
-            # Double-click opens the visible GUI, not a false claim of
-            # Windows filesystem protection. No privileged action is run.
-            try:
-                return _launch_admin_panel()
-            except Exception as gui_error:
-                log.exception("nao foi possivel abrir GUI local")
+        # A 1063 from the SCM dispatcher is definitive: this invocation
+        # is NOT from the Windows service controller. The GUI will attempt
+        # to open even when SESSIONNAME is absent from the environment.
+        try:
+            return _launch_admin_panel()
+        except Exception as gui_error:
+            log.exception("nao foi possivel abrir GUI local")
+            if _running_interactively():
                 _msgbox(
                     "O painel nao pode ser aberto.\n\n"
                     "Verifique a instalacao do servico e os logs em "
