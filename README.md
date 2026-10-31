@@ -107,6 +107,9 @@ na aba Actions pros artifacts `deepfreezer-deb` / `deepfreezer-exe` /
 `deepfreezer-windows-os-level` (esses expiram em ~90 dias; os de
 Releases são permanentes).
 
+
+**Windows kernel — primeiro protótipo em laboratório:** `native/windows/uf_audit_minifilter.c` é um esqueleto de minifiltro FltMgr **somente auditoria** para gravações externas, não compilado com WDK nem instalado. A execução real de proteção/overlay de volume Windows continua ausente. Veja [requisitos de laboratório e gates de build](native/windows/README.md). Não há .sys, INF ou assinatura publicados.
+
 ## Testes
 
 A suíte roda em qualquer SO, sem dependência externa:
