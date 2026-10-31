@@ -62,8 +62,8 @@ $volumes = @(Get-WmiObject -Namespace $namespace -Class UWF_Volume -ErrorAction 
 $cNow = @($volumes | Where-Object { $_.DriveLetter -ieq $ProtectedVolume -and $_.CurrentSession -eq $true })
 $cNext = @($volumes | Where-Object { $_.DriveLetter -ieq $ProtectedVolume -and $_.CurrentSession -eq $false })
 $dEntries = @($volumes | Where-Object { $_.DriveLetter -ieq $PersistentVolume })
-if ($cNow.Count -ne 1 -or $cNext.Count -ne 1) {
-    throw "UWF nao possui entradas atuais/proximas unicas para C:"
+if ($cNow.Count -gt 1 -or $cNext.Count -gt 1) {
+    throw "UWF possui entradas duplicadas para C:"
 }
 if (@($dEntries | Where-Object { $_.Protected -eq $true }).Count -ne 0) {
     throw "DADOS EM RISCO: volume persistente ja esta protegido em alguma sessao"
@@ -79,23 +79,28 @@ if ($Stage) {
         throw "Exige VM descartavel, snapshot, consentimento expresso de descarte"
     }
     if ($filter[0].CurrentEnabled -or $filter[0].NextEnabled -or
-        $cNow[0].Protected -or $cNext[0].Protected) {
+        @($cNow | Where-Object { $_.Protected }).Count -ne 0 -or
+        @($cNext | Where-Object { $_.Protected }).Count -ne 0) {
         throw "UWF ja alterado: recuse aplicar por cima de configuracao existente"
     }
 
     Write-Host "Preparando SOMENTE proxima sessao: C: protegido, D: persistente"
-    $result = $cNext[0].Protect()
-    if ([int]$result.ReturnValue -ne 0) {
-        throw ("UWF_Volume.Protect falhou: " + $result.ReturnValue)
+    $uwfmgr = Join-Path $env:WINDIR "System32\uwfmgr.exe"
+    if (-not (Test-Path -LiteralPath $uwfmgr -PathType Leaf)) {
+        throw "uwfmgr.exe indisponivel, recurso UWF nao instalado"
+    }
+    & $uwfmgr volume protect $ProtectedVolume
+    if ($LASTEXITCODE -ne 0) {
+        throw "UWF volume protect falhou: $LASTEXITCODE"
     }
     try {
-        $result = $filter[0].Enable()
-        if ([int]$result.ReturnValue -ne 0) {
-            throw ("UWF_Filter.Enable falhou: " + $result.ReturnValue)
+        & $uwfmgr filter enable
+        if ($LASTEXITCODE -ne 0) {
+            throw "UWF filter enable falhou: $LASTEXITCODE"
         }
     } catch {
         # Best-effort rollback of our staging, NEVER claim rollback succeeded.
-        try { $null = $cNext[0].Unprotect() } catch { }
+        try { & $uwfmgr volume unprotect $ProtectedVolume | Out-Null } catch { }
         throw "Ativacao incompleta; revise estado WMI manualmente antes de reiniciar. $($_.Exception.Message)"
     }
     Write-Host "Configuracao AGENDADA. Ainda NAO ativo ate reboot manual."
