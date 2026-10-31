@@ -157,3 +157,9 @@ O protótipo C `native/windows/uf_audit_minifilter.c` acrescenta a definição d
 
 **Atenção:** é fonte C **ainda não compilada com WDK e não instalada/validada em Win7, Win10 ou Win11**. Nenhum driver assinado, INF, altitude atribuída, redirecionamento de escrita ou rollback de reboot existe nesta etapa. A falha do arquivo criado pelo Explorer permanecer após reboot segue como problema aberto. A release 0.2.0 estável continua bloqueada e #49/#54 permanecem abertas.
 
+
+## Atualização 31/10/2026 — contrato CoW C nativo isolado (#49)
+
+Criados `native/common/uf_cow_core.h`, `native/common/uf_cow_core.c`, `native/common/test_uf_cow_core.c` e `test_native_cow_core.py`, além do [plano de verificação](../native/common/README.md). O modelo de memória **realiza cópia por setor, lê overlay/base, rejeita previamente falta de capacidade e descarta alterações** sem modificar o baseline. A integração com FltMgr, sistema de arquivos/volume, cache e persistência **não existe**. Não há reboot nem proteção externa no Windows; nenhuma evidência de Win7/10/11 pode ser inferida dos testes de lógica.
+
+A issue #49 segue aberta, #54 permanece para VMs e a release v0.2.0 estável continua bloqueada por proteção OS-level ainda não validada.

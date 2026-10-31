@@ -110,6 +110,8 @@ Releases são permanentes).
 
 **Windows kernel — primeiro protótipo em laboratório:** `native/windows/uf_audit_minifilter.c` é um esqueleto de minifiltro FltMgr **somente auditoria** para gravações externas, não compilado com WDK nem instalado. A execução real de proteção/overlay de volume Windows continua ausente. Veja [requisitos de laboratório e gates de build](native/windows/README.md). Não há .sys, INF ou assinatura publicados.
 
+**Backend CoW (contrato, não proteção do Windows):** `native/common/uf_cow_core.[ch]` implementa uma referência C99 de setores com baseline imutável, overlay em memória, leitura mesclada, escrita com preflight de capacidade e descarte. Os testes C são compilados quando um compilador está disponível, pela suíte `test_native_cow_core.py`. **O minifiltro FltMgr ainda é apenas auditoria e não chama esse núcleo.** [Escopo e gates](native/common/README.md).
+
 ## Testes
 
 A suíte roda em qualquer SO, sem dependência externa:
