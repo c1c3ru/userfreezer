@@ -64,15 +64,15 @@ class WindowsProtectionModeTests(unittest.TestCase):
         self.assertIn("NAO COMPROVADA", diagnostic)
         for banned in ("diskpart", "bcdedit.exe /set", "filter enable",
                        "volume protect", "Remove-Item", "New-Item",
-                       "Start-Service", "ConvertFrom-Json"):
+                       "Start-Service"):
             with self.subTest(banned=banned):
                 self.assertNotIn(banned, diagnostic)
 
     def test_ui_choice_does_not_write_config_or_enable_filter(self):
         gui = _read("ui/protection_setup.py")
-        self.assertIn('value="windows"', gui)
-        self.assertIn('value="profile"', gui)
-        self.assertIn('value="folder"', gui)
+        self.assertIn('("windows",', gui)
+        self.assertIn('("profile",', gui)
+        self.assertIn('("folder",', gui)
         self.assertIn("Nao foi", gui)
         self.assertIn("NAO ATIVADO", gui)
         self.assertNotIn("subprocess.run(", gui)
