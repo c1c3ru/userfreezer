@@ -20,6 +20,7 @@ if ROOT_DIR not in sys.path:
 from admin_client import request  # noqa: E402
 from ui.admin_elevation import run_admin_action  # noqa: E402
 from ui.diagnostic_export import export_sanitized_diagnostic  # noqa: E402
+from ui.protection_setup import show_protection_scope  # noqa: E402
 
 
 class AdminPanel(object):
@@ -64,6 +65,9 @@ class AdminPanel(object):
         footer.pack(fill="x")
         ttk.Button(footer, text="Atualizar", command=self.refresh).pack(side="left", padx=2)
         ttk.Button(footer, text="Exportar diagnostico", command=self.export).pack(side="left", padx=2)
+        ttk.Button(footer, text="Escolher modo de protecao",
+                   command=lambda: show_protection_scope(self.root)).pack(
+                       side="left", padx=2)
         ttk.Button(footer, text="Congelar", command=lambda: self.action("freeze")).pack(side="left", padx=2)
         ttk.Button(footer, text="Descartar", command=lambda: self.action("discard")).pack(side="left", padx=2)
         ttk.Button(footer, text="Aplicar (commit)", command=lambda: self.action("commit")).pack(side="left", padx=2)
