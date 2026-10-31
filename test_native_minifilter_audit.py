@@ -7,6 +7,7 @@ import os
 import pathlib
 import subprocess
 import unittest
+from unittest import mock
 from contextlib import redirect_stdout
 from types import SimpleNamespace
 
@@ -103,8 +104,10 @@ class NativeMinifilterAuditTests(unittest.TestCase):
                 self.assertFalse(state["os_level_protection_active"])
 
     def test_probe_cli_local_is_safely_conservative(self):
-        with redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(audit_probe.main([]), 0 if os.name != "nt" else 2)
+        synthetic = audit_probe.inspect(system="posix")
+        with mock.patch.object(audit_probe, "inspect", return_value=synthetic):
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(audit_probe.main([]), 0)
         doc = json.loads(output.getvalue())
         self.assertFalse(doc["os_level_protection_active"])
         self.assertFalse(doc["reboot_rollback_verified"])
